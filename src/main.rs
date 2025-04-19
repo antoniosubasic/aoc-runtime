@@ -1,3 +1,13 @@
+use clap::Parser;
+
+mod args;
+use args::{Args, Mode};
+
 fn main() {
-    println!("Hello, world!");
+    let args = Args::parse();
+
+    match args.mode {
+        Mode::Config => {}
+        Mode::Run => {}
+    }
 }
