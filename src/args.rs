@@ -1,8 +1,9 @@
 use chrono::{Datelike, Local};
 use clap::{Parser, ValueEnum};
+use serde::{Serialize, Serializer};
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize)]
 pub enum Language {
     Rust,
     CSharp,
@@ -16,13 +17,20 @@ impl fmt::Display for Language {
     }
 }
 
+fn serialize_language<S>(language: &Language, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&language.to_string())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Mode {
     Config,
     Run,
 }
 
-#[derive(Parser)]
+#[derive(Parser, Serialize)]
 pub struct Args {
     #[arg(
         short,
@@ -40,9 +48,11 @@ pub struct Args {
     )]
     pub day: u32,
 
+    #[serde(serialize_with = "serialize_language")]
     #[arg(short, long)]
     pub language: Language,
 
+    #[serde(skip)]
     #[arg(
         value_enum,
         default_value_t = Mode::Run
