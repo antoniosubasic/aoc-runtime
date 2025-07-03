@@ -27,6 +27,10 @@ where
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Mode {
     Run,
+    Init,
+    Path,
+    Code,
+    Url,
 }
 
 #[derive(Parser, Serialize)]
