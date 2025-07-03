@@ -35,7 +35,7 @@ pub struct Args {
     #[arg(
         short,
         long,
-        default_value_t = Local::now().day(),
+        default_value_t = if Local::now().month() == 12 { Local::now().day() } else { 1 },
         value_parser = clap::value_parser!(u32).range(1..=25)
     )]
     pub day: u32,
