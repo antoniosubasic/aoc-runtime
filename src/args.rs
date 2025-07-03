@@ -4,6 +4,7 @@ use serde::{Serialize, Serializer};
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize)]
+#[clap(rename_all = "lowercase")]
 pub enum Language {
     Rust,
     CSharp,
