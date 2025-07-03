@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use clap::Parser;
 use handlebars::Handlebars;
 use std::process::Command;
@@ -19,6 +19,13 @@ fn main() -> Result<()> {
         );
     } else {
         let config = Config::load(&args)?;
+
+        if matches!(args.mode, Mode::Run | Mode::Code) && !config.project_path.exists() {
+            return Err(anyhow!(
+                "project does not exist: {}",
+                config.project_path.display()
+            ));
+        }
 
         match args.mode {
             Mode::Run => {}
