@@ -11,7 +11,6 @@ fn main() -> Result<()> {
     let config = Config::load(&args)?;
 
     match args.mode {
-        Mode::Config => {}
         Mode::Run => {}
     }
 

@@ -26,7 +26,6 @@ where
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Mode {
-    Config,
     Run,
 }
 
