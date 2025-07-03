@@ -17,11 +17,14 @@ impl fmt::Display for Language {
     }
 }
 
-fn serialize_language<S>(language: &Language, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_language<S>(language: &Option<Language>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    serializer.serialize_str(&language.to_string())
+    match language {
+        Some(lang) => serializer.serialize_str(&lang.to_string()),
+        None => serializer.serialize_none(),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -52,8 +55,15 @@ pub struct Args {
     pub day: u32,
 
     #[serde(serialize_with = "serialize_language")]
-    #[arg(short, long)]
-    pub language: Language,
+    #[arg(
+        short,
+        long,
+        required_if_eq("mode", "run"),
+        required_if_eq("mode", "init"),
+        required_if_eq("mode", "path"),
+        required_if_eq("mode", "code")
+    )]
+    pub language: Option<Language>,
 
     #[serde(skip)]
     #[arg(
