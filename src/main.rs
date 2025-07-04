@@ -55,6 +55,7 @@ async fn main() -> Result<()> {
                     .as_ref()
                     .map(|cookie| Session::new(cookie.clone(), args.year, args.day))
                 {
+                    fs::create_dir_all(parent_path)?;
                     fs::write(
                         &input_file,
                         session
