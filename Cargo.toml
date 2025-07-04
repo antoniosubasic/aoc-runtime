@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+tokio = { version = "1.46.0", features = ["full"] }
 anyhow = "1.0.98"
+aoc_api = "1.1.0"
 chrono = "0.4.41"
 clap = { version = "4.5.40", features = ["derive"] }
 dirs = "6.0.0"

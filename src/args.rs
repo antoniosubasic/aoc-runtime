@@ -48,24 +48,24 @@ pub struct Args {
         long,
         
         // default to current year, if month is december, else previous year
-        default_value_t = Local::now().year() - (Local::now().month() < 12) as i32,
+        default_value_t = Local::now().year() as u16 - (Local::now().month() < 12) as u16,
 
         // allow years from 2015 to current year (inclusive)
-        value_parser = clap::value_parser!(i32).range(2015..=(Local::now().year() as i64 - (Local::now().month() < 12) as i64))
+        value_parser = clap::value_parser!(u16).range(2015..=(Local::now().year() as i64 - (Local::now().month() < 12) as i64))
     )]
-    pub year: i32,
+    pub year: u16,
 
     #[arg(
         short,
         long,
 
         // default to current day, if month is december, else 1
-        default_value_t = if Local::now().month() == 12 { Local::now().day() } else { 1 },
+        default_value_t = if Local::now().month() == 12 { Local::now().day() as u8 } else { 1 },
 
         // allow days from 1 to 25 (inclusive)
-        value_parser = clap::value_parser!(u32).range(1..=25)
+        value_parser = clap::value_parser!(u8).range(1..=25)
     )]
-    pub day: u32,
+    pub day: u8,
 
     #[serde(serialize_with = "serialize_language")]
     #[arg(short, long)]

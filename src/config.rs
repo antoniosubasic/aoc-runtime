@@ -8,6 +8,7 @@ use crate::args::Args;
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     template_path: String,
+    pub cookie: Option<String>,
     #[serde(skip)]
     pub project_path: PathBuf,
 }
