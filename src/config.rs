@@ -23,6 +23,8 @@ impl Config {
         let mut config: Config = serde_yml::from_str(&config_content)
             .with_context(|| format!("failed to parse config file '{}'", config_path.display()))?;
 
+        // this code block builds the actual project path based on the templated path provided in the config file
+        // for that, it uses the library 'handlebars' with a custom helper, for left padding numerical values (year, day, etc.) with 0s
         {
             let mut handlebars = Handlebars::new();
             handlebars.register_helper("pad", Box::new(pad_helper));
