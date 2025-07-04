@@ -68,16 +68,7 @@ pub struct Args {
     pub day: u32,
 
     #[serde(serialize_with = "serialize_language")]
-    #[arg(
-        short,
-        long,
-
-        // make the language parameter required for all modes except "url"
-        required_if_eq("mode", "run"),
-        required_if_eq("mode", "init"),
-        required_if_eq("mode", "path"),
-        required_if_eq("mode", "code")
-    )]
+    #[arg(short, long)]
     pub language: Option<Language>,
 
     #[serde(skip)]
