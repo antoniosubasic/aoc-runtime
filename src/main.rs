@@ -110,18 +110,24 @@ async fn main() -> Result<()> {
 
                 let stdout = String::from_utf8_lossy(&run_output.stdout).to_string();
 
+                // create session if cookie is provided
                 if let Some(session) = config
                     .cookie
                     .as_ref()
                     .map(|cookie| Session::new(cookie.clone(), args.year, args.day))
                 {
+                    // count number of \n to determine number of parts to validate
                     let new_lines: Vec<usize> = stdout
                         .chars()
                         .enumerate()
                         .filter_map(|(i, c)| if c == '\n' { Some(i) } else { None })
                         .collect();
 
+                    // newlines must be:
+                    // 1 = first part
+                    // 2 = first and second part
                     if (1..=2).contains(&new_lines.len()) {
+                        // split stdout into parts based on newlines
                         let (part1, part2) = match new_lines.len() {
                             1 => (stdout.trim_end(), None),
                             2 => {
@@ -137,6 +143,7 @@ async fn main() -> Result<()> {
                             .map_err(|e| anyhow!("{e}"))?;
 
                         if let Some(part1_success) = part1_response.success {
+                            // print result of part 1 if api call was successful
                             println!(
                                 "{}",
                                 if part1_success {
@@ -146,6 +153,7 @@ async fn main() -> Result<()> {
                                 }
                             );
 
+                            // continue to part 2 if it exists
                             if let Some(part2) = part2 {
                                 let part2_response = session
                                     .submit_answer(2, part2)
@@ -153,6 +161,7 @@ async fn main() -> Result<()> {
                                     .map_err(|e| anyhow!("{e}"))?;
 
                                 if let Some(part2_success) = part2_response.success {
+                                    // print result of part 2 if api call was successful
                                     println!(
                                         "{}",
                                         if part2_success {
@@ -162,6 +171,7 @@ async fn main() -> Result<()> {
                                         }
                                     );
                                 } else {
+                                    // throw error if part 2 submission failed
                                     return Err(anyhow!(
                                         "failed to submit answer for part 2: {}",
                                         part2_response
@@ -171,6 +181,7 @@ async fn main() -> Result<()> {
                                 }
                             }
                         } else {
+                            // throw error if part 1 submission failed
                             return Err(anyhow!(
                                 "failed to submit answer for part 1: {}",
                                 part1_response
@@ -179,10 +190,13 @@ async fn main() -> Result<()> {
                             ));
                         }
 
+                        // validation was successful
+                        // exit successfully to prevent further output
                         return Ok(());
                     };
                 }
 
+                // if no session is provided or newlines are not 1 or 2, just print the output
                 println!("{}", String::from_utf8_lossy(&run_output.stdout));
             }
             Mode::Init => {
