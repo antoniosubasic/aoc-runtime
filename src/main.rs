@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use aoc_api::Session;
 use clap::Parser;
+use colored::Colorize;
 use handlebars::Handlebars;
 use std::{
     fs,
@@ -104,7 +105,85 @@ async fn main() -> Result<()> {
                     .map(|mut cmd| eval_command_output(&cmd.output()?, true))
                     .transpose()?;
 
-                eval_command_output(&language.run_command(&config).output()?, false)?;
+                let run_output = language.run_command(&config).output()?;
+                eval_command_output(&run_output, true)?;
+
+                let stdout = String::from_utf8_lossy(&run_output.stdout).to_string();
+
+                if let Some(session) = config
+                    .cookie
+                    .as_ref()
+                    .map(|cookie| Session::new(cookie.clone(), args.year, args.day))
+                {
+                    let new_lines: Vec<usize> = stdout
+                        .chars()
+                        .enumerate()
+                        .filter_map(|(i, c)| if c == '\n' { Some(i) } else { None })
+                        .collect();
+
+                    if (1..=2).contains(&new_lines.len()) {
+                        let (part1, part2) = match new_lines.len() {
+                            1 => (stdout.trim_end(), None),
+                            2 => {
+                                let (part1, part2) = stdout.split_at(new_lines[0]);
+                                (part1, Some(part2[1..].trim_end()))
+                            }
+                            _ => unreachable!(),
+                        };
+
+                        let part1_response = session
+                            .submit_answer(1, part1)
+                            .await
+                            .map_err(|e| anyhow!("{e}"))?;
+
+                        if let Some(part1_success) = part1_response.success {
+                            println!(
+                                "{}",
+                                if part1_success {
+                                    part1.green()
+                                } else {
+                                    part1.red()
+                                }
+                            );
+
+                            if let Some(part2) = part2 {
+                                let part2_response = session
+                                    .submit_answer(2, part2)
+                                    .await
+                                    .map_err(|e| anyhow!("{e}"))?;
+
+                                if let Some(part2_success) = part2_response.success {
+                                    println!(
+                                        "{}",
+                                        if part2_success {
+                                            part2.green()
+                                        } else {
+                                            part2.red()
+                                        }
+                                    );
+                                } else {
+                                    return Err(anyhow!(
+                                        "failed to submit answer for part 2: {}",
+                                        part2_response
+                                            .cooldown
+                                            .unwrap_or_else(|| "unknown error".to_string())
+                                    ));
+                                }
+                            }
+                        } else {
+                            return Err(anyhow!(
+                                "failed to submit answer for part 1: {}",
+                                part1_response
+                                    .cooldown
+                                    .unwrap_or_else(|| "unknown error".to_string())
+                            ));
+                        }
+
+                        return Ok(());
+                    };
+                }
+
+                println!("{}", String::from_utf8_lossy(&run_output.stdout));
             }
             Mode::Init => {
                 // throw error if trying to initialize but project already exists
