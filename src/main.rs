@@ -9,14 +9,6 @@ mod config;
 use args::{Args, Language, Mode};
 use config::Config;
 
-macro_rules! cmd {
-    ($program:expr, $($arg:expr),*) => {
-        Command::new($program)
-            $(.arg($arg.to_string()))*
-            .status()
-    };
-}
-
 #[macro_export]
 macro_rules! command {
     // program with no arguments
@@ -84,8 +76,6 @@ async fn main() -> Result<()> {
             }
         }
 
-        let project_path_src = config.project_path.join("src");
-
         match args.mode {
             Mode::Run => {
                 if let Some(build_output) = language
@@ -128,35 +118,47 @@ async fn main() -> Result<()> {
                     config.project_path.display().to_string()
                 );
 
-                match language {
+                let init_output = match language {
                     Language::Rust => {
-                        cmd!("cargo", "init", "--bin", config.project_path.display())?;
+                        command!("cargo", "init", "--bin", &config.project_path)
                     }
                     Language::CSharp => {
-                        cmd!(
+                        command!(
                             "dotnet",
                             "new",
                             "console",
                             "--name",
-                            config.project_path.file_name().unwrap().to_str().unwrap(),
+                            &config.project_path.file_name().unwrap().to_str().unwrap(),
                             "--output",
-                            config.project_path.display()
-                        )?;
+                            &config.project_path
+                        )
                     }
                     Language::Java => {
-                        cmd!("mkdir", "-p", project_path_src.display())?;
-                        cmd!("touch", project_path_src.join("Main.java").display())?;
+                        if !config.project_path.join("src").exists() {
+                            fs::create_dir_all(&config.project_path.join("src"))?;
+                        }
+                        command!("touch", &config.project_path.join("src").join("Main.java"))
                     }
                     Language::Python => {
-                        cmd!("touch", config.project_path.join("main.py").display())?;
+                        command!("touch", &config.project_path.join("main.py"))
                     }
-                };
+                }
+                .output()?;
+
+                if !init_output.status.success() {
+                    return Err(anyhow!(
+                        "init failed: {}",
+                        String::from_utf8_lossy(&init_output.stderr)
+                    ));
+                } else {
+                    println!("{}", String::from_utf8_lossy(&init_output.stdout));
+                }
             }
             Mode::Path => {
                 println!("{}", config.project_path.display());
             }
             Mode::Code => {
-                Command::new("code").arg(&config.project_path).spawn()?;
+                command!("code", &config.project_path).spawn()?;
             }
             Mode::Url => unreachable!(),
         }
