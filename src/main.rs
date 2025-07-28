@@ -2,7 +2,10 @@ use anyhow::{Result, anyhow};
 use aoc_api::Session;
 use clap::Parser;
 use handlebars::Handlebars;
-use std::{fs, process::Command};
+use std::{
+    fs,
+    process::{Command, Output},
+};
 
 mod args;
 mod config;
@@ -24,6 +27,21 @@ macro_rules! command {
             cmd
         }
     };
+}
+
+pub fn eval_command_output(output: &Output, silent: bool) -> Result<()> {
+    match output.status.success() {
+        true => {
+            if !silent {
+                println!("{}", String::from_utf8_lossy(&output.stdout));
+            }
+            Ok(())
+        }
+        false => Err(anyhow!(
+            "failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )),
+    }
 }
 
 #[tokio::main]
@@ -78,29 +96,12 @@ async fn main() -> Result<()> {
 
         match args.mode {
             Mode::Run => {
-                if let Some(build_output) = language
+                language
                     .build_command(&config)
-                    .map(|mut cmd| cmd.output())
-                    .transpose()?
-                {
-                    if !build_output.status.success() {
-                        return Err(anyhow!(
-                            "build failed: {}",
-                            String::from_utf8_lossy(&build_output.stderr)
-                        ));
-                    }
-                }
+                    .map(|mut cmd| eval_command_output(&cmd.output()?, true))
+                    .transpose()?;
 
-                let run_output = language.run_command(&config).output()?;
-                match run_output.status.success() {
-                    true => println!("{}", String::from_utf8_lossy(&run_output.stdout)),
-                    false => {
-                        return Err(anyhow!(
-                            "run failed: {}",
-                            String::from_utf8_lossy(&run_output.stderr)
-                        ));
-                    }
-                }
+                eval_command_output(&language.run_command(&config).output()?, false)?;
             }
             Mode::Init => {
                 if config.project_path.exists() {
@@ -144,15 +145,7 @@ async fn main() -> Result<()> {
                     }
                 }
                 .output()?;
-
-                if !init_output.status.success() {
-                    return Err(anyhow!(
-                        "init failed: {}",
-                        String::from_utf8_lossy(&init_output.stderr)
-                    ));
-                } else {
-                    println!("{}", String::from_utf8_lossy(&init_output.stdout));
-                }
+                eval_command_output(&init_output, false)?;
             }
             Mode::Path => {
                 println!("{}", config.project_path.display());
