@@ -6,9 +6,7 @@ use std::{fmt, process::Command};
 use crate::{command, config::Config};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize)]
-
-// ensure longer names like "CSharp" are used without any dashes ("csharp" instead of "c-sharp")
-#[clap(rename_all = "lowercase")]
+#[clap(rename_all = "lowercase")] // ensure longer names like "CSharp" are used without any dashes ("csharp" instead of "c-sharp")
 pub enum Language {
     Rust,
     CSharp,

@@ -49,10 +49,10 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     if args.mode == Mode::Url {
-        let handlebars = Handlebars::new();
         println!(
             "{}",
-            handlebars.render_template("https://adventofcode.com/{{year}}/day/{{day}}", &args)?
+            Handlebars::new()
+                .render_template("https://adventofcode.com/{{year}}/day/{{day}}", &args)?
         );
     } else {
         // make the language parameter required for all modes except "url"
