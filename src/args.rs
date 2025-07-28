@@ -1,7 +1,9 @@
 use chrono::{Datelike, Local};
 use clap::{Parser, ValueEnum};
 use serde::{Serialize, Serializer};
-use std::fmt;
+use std::{fmt, process::Command};
+
+use crate::{command, config::Config};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize)]
 
@@ -18,6 +20,68 @@ impl fmt::Display for Language {
     // make the enum be formatted in all lowercase when converting to a string
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", format!("{:?}", self).to_lowercase())
+    }
+}
+
+impl Language {
+    pub fn build_command(&self, config: &Config) -> Option<Command> {
+        match *self {
+            Language::Rust => Some(
+                command!(
+                    "cargo",
+                    "build",
+                    "--release",
+                    "--manifest-path",
+                    &config.project_path.join("Cargo.toml")
+                )
+            ),
+            Language::CSharp => Some(
+                command!(
+                    "dotnet",
+                    "build",
+                    &config.project_path
+                )
+            ),
+            Language::Java => Some(
+                command!(
+                    "javac",
+                    &config.project_path.join("src").join("Main.java")
+                )
+            ),
+            Language::Python => None,
+        }.map(|mut command| {
+            command.current_dir(&config.project_path); 
+            command
+        })
+    }
+
+    pub fn run_command(&self, config: &Config) -> Command {
+        let mut command = match *self {
+            Language::Rust => command!(
+                "cargo",
+                "run",
+                "--manifest-path",
+                &config.project_path.join("Cargo.toml")
+            ),
+            Language::CSharp => command!(
+                "dotnet",
+                "run",
+                "--project",
+                &config.project_path
+            ),
+            Language::Java => command!(
+                "java",
+                "-cp",
+                &config.project_path.join("src"),
+                "Main"
+            ),
+            Language::Python => command!(
+                "python",
+                &config.project_path.join("main.py")
+            ),
+        };
+        command.current_dir(&config.project_path);
+        command
     }
 }
 

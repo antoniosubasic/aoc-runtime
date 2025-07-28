@@ -17,6 +17,23 @@ macro_rules! cmd {
     };
 }
 
+#[macro_export]
+macro_rules! command {
+    // program with no arguments
+    ($program:expr) => {
+        Command::new($program)
+    };
+
+    // program with arguments
+    ($program:expr, $($arg:expr),+ $(,)?) => {
+        {
+            let mut cmd = Command::new($program);
+            $(cmd.arg($arg);)*
+            cmd
+        }
+    };
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -67,8 +84,34 @@ async fn main() -> Result<()> {
             }
         }
 
+        let project_path_src = config.project_path.join("src");
+
         match args.mode {
-            Mode::Run => {}
+            Mode::Run => {
+                if let Some(build_output) = language
+                    .build_command(&config)
+                    .map(|mut cmd| cmd.output())
+                    .transpose()?
+                {
+                    if !build_output.status.success() {
+                        return Err(anyhow!(
+                            "build failed: {}",
+                            String::from_utf8_lossy(&build_output.stderr)
+                        ));
+                    }
+                }
+
+                let run_output = language.run_command(&config).output()?;
+                match run_output.status.success() {
+                    true => println!("{}", String::from_utf8_lossy(&run_output.stdout)),
+                    false => {
+                        return Err(anyhow!(
+                            "run failed: {}",
+                            String::from_utf8_lossy(&run_output.stderr)
+                        ));
+                    }
+                }
+            }
             Mode::Init => {
                 if config.project_path.exists() {
                     return Err(anyhow!(
@@ -80,7 +123,6 @@ async fn main() -> Result<()> {
                         .map_err(|e| anyhow!("failed to create project directory: {}", e))?;
                 }
 
-                let project_path_src = config.project_path.join("src");
                 println!(
                     "Creating project at: {}",
                     config.project_path.display().to_string()
