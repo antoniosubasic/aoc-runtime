@@ -62,6 +62,7 @@ async fn main() -> Result<()> {
 
         let config = Config::load(&args)?;
 
+        // throw error if project doesn't exist for modes that require existence
         if matches!(args.mode, Mode::Run | Mode::Code) && !config.project_path.exists() {
             return Err(anyhow!(
                 "project does not exist: {}",
@@ -69,6 +70,7 @@ async fn main() -> Result<()> {
             ));
         }
 
+        // check for input file and download if necessary
         if matches!(args.mode, Mode::Run | Mode::Init) {
             let parent_path = config
                 .project_path
@@ -96,6 +98,7 @@ async fn main() -> Result<()> {
 
         match args.mode {
             Mode::Run => {
+                // run build (if exists for given language) command silently (meaning stdout is not printed)
                 language
                     .build_command(&config)
                     .map(|mut cmd| eval_command_output(&cmd.output()?, true))
@@ -104,6 +107,7 @@ async fn main() -> Result<()> {
                 eval_command_output(&language.run_command(&config).output()?, false)?;
             }
             Mode::Init => {
+                // throw error if trying to initialize but project already exists
                 if config.project_path.exists() {
                     return Err(anyhow!(
                         "project already exists: {}",
