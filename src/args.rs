@@ -63,12 +63,7 @@ impl Language {
                 "--output",
                 &config.project_path
             ),
-            Language::Java => {
-                if !config.project_path.join("src").exists() {
-                    fs::create_dir_all(&config.project_path.join("src")).unwrap();
-                }
-                command!("touch", &config.project_path.join("src").join("Main.java"))
-            },
+            Language::Java => command!("touch", &config.project_path.join("Main.java")),
             Language::Python => command!("touch", &config.project_path.join("main.py")),
         }
     }
@@ -94,7 +89,7 @@ impl Language {
             Language::Java => Some(
                 command!(
                     "javac",
-                    &config.project_path.join("src").join("Main.java")
+                    &config.project_path.join("Main.java")
                 )
             ),
             Language::Python => None,
@@ -121,7 +116,7 @@ impl Language {
             Language::Java => command!(
                 "java",
                 "-cp",
-                &config.project_path.join("src"),
+                &config.project_path,
                 "Main"
             ),
             Language::Python => command!(
