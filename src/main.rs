@@ -2,7 +2,6 @@ use anyhow::{Result, anyhow};
 use aoc_api::Session;
 use clap::Parser;
 use colored::Colorize;
-use handlebars::Handlebars;
 use std::{
     fs,
     process::{Command, Output},
@@ -50,11 +49,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     if args.mode == Mode::Url {
-        println!(
-            "{}",
-            Handlebars::new()
-                .render_template("https://adventofcode.com/{{year}}/day/{{day}}", &args)?
-        );
+        println!("https://adventofcode.com/{}/day/{}", args.year, args.day);
     } else {
         // make the language parameter required for all modes except "url"
         let language = args

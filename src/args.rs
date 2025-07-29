@@ -140,3 +140,14 @@ pub struct Args {
     )]
     pub mode: Mode,
 }
+
+impl Args {
+    pub fn iter(&self) -> impl Iterator<Item = (&'static str, String, bool)> {
+        [
+            ("year", self.year.to_string(), false),
+            ("day", self.day.to_string(), true),
+            ("language", self.language.map(|lang| lang.to_string()).unwrap_or_else(String::new), false),
+        ]
+        .into_iter()
+    }
+}

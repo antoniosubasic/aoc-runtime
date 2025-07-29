@@ -1,5 +1,5 @@
-use anyhow::{Context, Result};
-use handlebars::{Context as HbContext, Handlebars, Helper, HelperResult, Output, RenderContext};
+use anyhow::{Context, Result, anyhow};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
@@ -24,46 +24,47 @@ impl Config {
         let mut config: Config = serde_yml::from_str(&config_content)
             .with_context(|| format!("failed to parse config file '{}'", config_path.display()))?;
 
-        // this code block builds the actual project path based on the templated path provided in the config file
-        // for that, it uses the library 'handlebars' with a custom helper, for left padding numerical values (year, day, etc.) with 0s
-        {
-            let mut handlebars = Handlebars::new();
-            handlebars.register_helper("pad", Box::new(pad_helper));
-
-            config.project_path = PathBuf::from(
-                handlebars
-                    .render_template(&config.template_path, args)
-                    .with_context(|| {
-                        format!(
-                            "failed inserting variables in template path '{}'",
-                            config.template_path
-                        )
-                    })?,
-            );
-
-            if config.project_path.starts_with("~") {
-                config.project_path = home.join(config.project_path.strip_prefix("~").unwrap());
-            }
+        if let Ok(stripped) = config.project_path.strip_prefix("~") {
+            config.project_path = home.join(stripped);
         }
+
+        config.build_from_args(args)?;
 
         Ok(config)
     }
-}
 
-fn pad_helper(
-    h: &Helper,
-    _: &Handlebars,
-    _: &HbContext,
-    _: &mut RenderContext,
-    out: &mut dyn Output,
-) -> HelperResult {
-    let value = h.param(0).and_then(|v| v.value().as_u64()).ok_or_else(|| {
-        handlebars::RenderErrorReason::Other("first parameter must be a number".into())
-    })?;
+    fn build_regex(param: &str, paddable: bool) -> Regex {
+        Regex::new(&format!(
+            r"\{{\{{\s*{}{}\s*\}}\}}",
+            if paddable { r"(pad\s+)?" } else { "" },
+            param
+        ))
+        .unwrap()
+    }
 
-    let width = h.param(1).and_then(|v| v.value().as_u64()).unwrap_or(2) as usize;
+    pub fn build_from_args(&mut self, args: &Args) -> Result<()> {
+        let mut path = self.template_path.clone();
 
-    let padded = format!("{:0width$}", value, width = width);
-    out.write(&padded)?;
-    Ok(())
+        for (name, value, paddable) in args.iter() {
+            let re = Config::build_regex(name, paddable);
+            let captures = re
+                .captures(&path)
+                .ok_or_else(|| anyhow!("failed to find '{}' in template path", name))?;
+            let paddable = captures.get(1).is_some();
+            path = re
+                .replace_all(
+                    &path,
+                    if paddable {
+                        format!("{:0>2}", value)
+                    } else {
+                        value
+                    },
+                )
+                .to_string();
+        }
+
+        self.project_path = PathBuf::from(path);
+
+        Ok(())
+    }
 }
