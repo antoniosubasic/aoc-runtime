@@ -5,6 +5,7 @@ use strum_macros::EnumIter;
 use std::{fmt, process::Command};
 use anyhow::{Result, anyhow};
 use std::str::FromStr;
+use strum::IntoEnumIterator;
 
 use crate::{command, config::Config};
 
@@ -28,13 +29,13 @@ impl FromStr for Language {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "rust" => Ok(Language::Rust),
-            "csharp" => Ok(Language::CSharp),
-            "java" => Ok(Language::Java),
-            "python" => Ok(Language::Python),
-            _ => Err(format!("unknown language: {}", s)),
+        for lang in Language::iter() {
+            if lang.to_string() == s.to_lowercase() {
+                return Ok(lang);
+            }
         }
+
+        Err(format!("unknown language: {}", s))
     }
 }
 
