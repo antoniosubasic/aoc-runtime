@@ -1,11 +1,14 @@
 use chrono::{Datelike, Local};
 use clap::{Parser, ValueEnum};
 use serde::{Serialize, Serializer};
+use strum_macros::EnumIter;
 use std::{fmt, process::Command};
+use anyhow::{Result, anyhow};
+use std::str::FromStr;
 
 use crate::{command, config::Config};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, EnumIter)]
 #[clap(rename_all = "lowercase")] // ensure longer names like "CSharp" are used without any dashes ("csharp" instead of "c-sharp")
 pub enum Language {
     Rust,
@@ -18,6 +21,20 @@ impl fmt::Display for Language {
     // make the enum be formatted in all lowercase when converting to a string
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", format!("{:?}", self).to_lowercase())
+    }
+}
+
+impl FromStr for Language {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "rust" => Ok(Language::Rust),
+            "csharp" => Ok(Language::CSharp),
+            "java" => Ok(Language::Java),
+            "python" => Ok(Language::Python),
+            _ => Err(format!("unknown language: {}", s)),
+        }
     }
 }
 
@@ -109,25 +126,19 @@ pub struct Args {
         short,
         long,
         
-        // default to current year, if month is december, else previous year
-        default_value_t = Local::now().year() as u16 - (Local::now().month() < 12) as u16,
-
         // allow years from 2015 to current year (inclusive)
         value_parser = clap::value_parser!(u16).range(2015..=(Local::now().year() as i64 - (Local::now().month() < 12) as i64))
     )]
-    pub year: u16,
+    pub year: Option<u16>,
 
     #[arg(
         short,
         long,
 
-        // default to current day, if month is december, else 1
-        default_value_t = if Local::now().month() == 12 { Local::now().day() as u8 } else { 1 },
-
         // allow days from 1 to 25 (inclusive)
         value_parser = clap::value_parser!(u8).range(1..=25)
     )]
-    pub day: u8,
+    pub day: Option<u8>,
 
     #[serde(serialize_with = "serialize_language")]
     #[arg(short, long)]
@@ -142,12 +153,36 @@ pub struct Args {
 }
 
 impl Args {
-    pub fn iter(&self) -> impl Iterator<Item = (&'static str, String, bool)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&'static str, Option<String>, bool)> {
         [
-            ("year", self.year.to_string(), false),
-            ("day", self.day.to_string(), true),
-            ("language", self.language.map(|lang| lang.to_string()).unwrap_or_else(String::new), false),
+            ("year", self.year.map(|y| y.to_string()), false),
+            ("day", self.day.map(|d| d.to_string()), true),
+            ("language", self.language.map(|lang| lang.to_string()), false),
         ]
         .into_iter()
+    }
+
+    pub fn iter_names() -> impl Iterator<Item = (&'static str, bool)> {
+        [
+            ("year", false),
+            ("day", true),
+            ("language", false),
+        ]
+        .into_iter()
+    }
+
+    pub fn validate(&mut self) -> Result<()> {
+        // default to current year, if month is december, else previous year
+        self.year.get_or_insert(Local::now().year() as u16 - (Local::now().month() < 12) as u16);
+
+        // default to current day, if month is december, else 1
+        self.day.get_or_insert(if Local::now().month() == 12 { Local::now().day() as u8 } else { 1 });
+
+        // modes run, init, path, code require a language
+        if matches!(self.mode, Mode::Run | Mode::Init | Mode::Path | Mode::Code) && self.language.is_none() {
+            Err(anyhow!("language is required for mode '{:?}'", self.mode))
+        } else {
+            Ok(())
+        }
     }
 }
