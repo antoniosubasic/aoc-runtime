@@ -9,7 +9,7 @@ use std::{
 
 mod args;
 mod config;
-use args::{Args, Language, Mode};
+use args::{Args, Mode};
 use config::Config;
 
 #[macro_export]
@@ -199,38 +199,10 @@ async fn main() -> Result<()> {
                     .map_err(|e| anyhow!("failed to create project directory: {}", e))?;
             }
 
-            println!(
-                "Creating project at: {}",
-                config.project_path.display().to_string()
-            );
-
-            let init_output = match args.language.unwrap() {
-                Language::Rust => {
-                    command!("cargo", "init", "--bin", &config.project_path)
-                }
-                Language::CSharp => {
-                    command!(
-                        "dotnet",
-                        "new",
-                        "console",
-                        "--name",
-                        &config.project_path.file_name().unwrap().to_str().unwrap(),
-                        "--output",
-                        &config.project_path
-                    )
-                }
-                Language::Java => {
-                    if !config.project_path.join("src").exists() {
-                        fs::create_dir_all(&config.project_path.join("src"))?;
-                    }
-                    command!("touch", &config.project_path.join("src").join("Main.java"))
-                }
-                Language::Python => {
-                    command!("touch", &config.project_path.join("main.py"))
-                }
-            }
-            .output()?;
-            eval_command_output(&init_output, false)?;
+            eval_command_output(
+                &args.language.unwrap().init_command(&config).output()?,
+                false,
+            )?;
         }
         Mode::Path => {
             println!("{}", config.project_path.display());

@@ -2,7 +2,7 @@ use chrono::{Datelike, Local};
 use clap::{Parser, ValueEnum};
 use serde::{Serialize, Serializer};
 use strum_macros::EnumIter;
-use std::{fmt, process::Command};
+use std::{fmt, fs, process::Command};
 use anyhow::{Result, anyhow};
 use std::str::FromStr;
 use strum::IntoEnumIterator;
@@ -51,6 +51,28 @@ impl FromStr for Language {
 }
 
 impl Language {
+    pub fn init_command(&self, config: &Config) -> Command {
+        match *self {
+            Language::Rust => command!("cargo", "init", "--bin", &config.project_path),
+            Language::CSharp => command!(
+                "dotnet",
+                "new",
+                "console",
+                "--name",
+                &config.project_path.file_name().unwrap().to_str().unwrap(),
+                "--output",
+                &config.project_path
+            ),
+            Language::Java => {
+                if !config.project_path.join("src").exists() {
+                    fs::create_dir_all(&config.project_path.join("src")).unwrap();
+                }
+                command!("touch", &config.project_path.join("src").join("Main.java"))
+            },
+            Language::Python => command!("touch", &config.project_path.join("main.py")),
+        }
+    }
+
     pub fn build_command(&self, config: &Config) -> Option<Command> {
         match *self {
             Language::Rust => Some(
