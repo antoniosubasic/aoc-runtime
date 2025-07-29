@@ -18,6 +18,17 @@ pub enum Language {
     Python,
 }
 
+// make sure the language enum is serialized lowercase
+fn serialize_language<S>(language: &Option<Language>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match language {
+        Some(lang) => serializer.serialize_str(&lang.to_string()),
+        None => serializer.serialize_none(),
+    }
+}
+
 impl fmt::Display for Language {
     // make the enum be formatted in all lowercase when converting to a string
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -98,17 +109,6 @@ impl Language {
         };
         command.current_dir(&config.project_path);
         command
-    }
-}
-
-// make sure the language enum is serialized lowercase
-fn serialize_language<S>(language: &Option<Language>, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    match language {
-        Some(lang) => serializer.serialize_str(&lang.to_string()),
-        None => serializer.serialize_none(),
     }
 }
 
