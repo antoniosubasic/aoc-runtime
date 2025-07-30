@@ -46,9 +46,18 @@ pub fn eval_command_output(output: &Output, silent: bool) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut config = Config::load()?;
+    let (mut config, optional_parameters) = Config::load()?;
     let mut args = Args::parse();
-    config.build(&mut args)?;
+
+    args.build(optional_parameters);
+    config.build(&args)?;
+
+    // throw error if modes run, init, path, code are used without a language
+    if matches!(args.mode, Mode::Run | Mode::Init | Mode::Path | Mode::Code)
+        && args.language.is_none()
+    {
+        return Err(anyhow!("language is required for mode '{:?}'", args.mode));
+    }
 
     // throw error if project doesn't exist for modes that require existence
     if matches!(args.mode, Mode::Run | Mode::Code) && !config.project_path.exists() {
