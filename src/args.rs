@@ -2,12 +2,12 @@ use chrono::{Datelike, Local};
 use clap::{Parser, ValueEnum};
 use serde::{Serialize, Serializer};
 use strum_macros::EnumIter;
-use std::{fmt, fs, process::Command};
-use anyhow::{Result, anyhow};
+use std::{fmt, process::Command};
+use anyhow::Result;
 use std::str::FromStr;
 use strum::IntoEnumIterator;
 
-use crate::{command, config::Config};
+use crate::{command, config::{Config, OptionalParameters}};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, EnumIter)]
 #[clap(rename_all = "lowercase")] // ensure longer names like "CSharp" are used without any dashes ("csharp" instead of "c-sharp")
@@ -171,36 +171,16 @@ pub struct Args {
 }
 
 impl Args {
-    pub fn iter(&self) -> impl Iterator<Item = (&'static str, Option<String>, bool)> {
-        [
-            ("year", self.year.map(|y| y.to_string()), false),
-            ("day", self.day.map(|d| d.to_string()), true),
-            ("language", self.language.map(|lang| lang.to_string()), false),
-        ]
-        .into_iter()
-    }
+    pub fn build(&mut self, optional_parameters: OptionalParameters) {
+        self.year = self.year
+            .or(optional_parameters.year)
+            .or(Some(Local::now().year() as u16 - (Local::now().month() < 12) as u16)); // default to current year, if month is december, else previous year
 
-    pub fn iter_names() -> impl Iterator<Item = (&'static str, bool)> {
-        [
-            ("year", false),
-            ("day", true),
-            ("language", false),
-        ]
-        .into_iter()
-    }
+        self.day = self.day
+            .or(optional_parameters.day)
+            .or(Some(if Local::now().month() == 12 { Local::now().day() as u8 } else { 1 })); // default to current day, if month is december, else 1
 
-    pub fn validate(&mut self) -> Result<()> {
-        // default to current year, if month is december, else previous year
-        self.year.get_or_insert(Local::now().year() as u16 - (Local::now().month() < 12) as u16);
-
-        // default to current day, if month is december, else 1
-        self.day.get_or_insert(if Local::now().month() == 12 { Local::now().day() as u8 } else { 1 });
-
-        // modes run, init, path, code require a language
-        if matches!(self.mode, Mode::Run | Mode::Init | Mode::Path | Mode::Code) && self.language.is_none() {
-            Err(anyhow!("language is required for mode '{:?}'", self.mode))
-        } else {
-            Ok(())
-        }
+        self.language = self.language
+            .or(optional_parameters.language);
     }
 }
