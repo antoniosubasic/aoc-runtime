@@ -67,6 +67,11 @@ async fn main() -> Result<()> {
         ));
     }
 
+    let session = config
+        .cookie
+        .as_ref()
+        .map(|cookie| Session::new(cookie.clone(), args.year.unwrap(), args.day.unwrap()));
+
     // check for input file and download if necessary
     if matches!(args.mode, Mode::Run | Mode::Init) {
         let parent_path = config
@@ -76,11 +81,7 @@ async fn main() -> Result<()> {
         let input_file = parent_path.join("input.txt");
 
         if !input_file.exists() {
-            if let Some(session) = config
-                .cookie
-                .as_ref()
-                .map(|cookie| Session::new(cookie.clone(), args.year.unwrap(), args.day.unwrap()))
-            {
+            if let Some(session) = &session {
                 fs::create_dir_all(parent_path)?;
                 fs::write(
                     &input_file,
@@ -108,11 +109,7 @@ async fn main() -> Result<()> {
             let stdout = String::from_utf8_lossy(&run_output.stdout).to_string();
 
             // create session if cookie is provided
-            if let Some(session) = config
-                .cookie
-                .as_ref()
-                .map(|cookie| Session::new(cookie.clone(), args.year.unwrap(), args.day.unwrap()))
-            {
+            if let Some(session) = &session {
                 // count number of \n to determine number of parts to validate
                 let new_lines: Vec<usize> = stdout
                     .chars()
@@ -134,63 +131,41 @@ async fn main() -> Result<()> {
                         _ => unreachable!(),
                     };
 
-                    let part1_response = session
-                        .submit_answer(1, part1)
+                    let part1_success = session
+                        .submit_answer_explicit_error(1, part1)
                         .await
                         .map_err(|e| anyhow!("{e}"))?;
 
-                    if let Some(part1_success) = part1_response.success {
-                        // print result of part 1 if api call was successful
+                    println!(
+                        "{}",
+                        if part1_success {
+                            part1.green()
+                        } else {
+                            part1.red()
+                        }
+                    );
+
+                    // continue to part 2 if it exists
+                    if let Some(part2) = part2 {
+                        let part2_success = session
+                            .submit_answer_explicit_error(2, part2)
+                            .await
+                            .map_err(|e| anyhow!("{e}"))?;
+
                         println!(
                             "{}",
-                            if part1_success {
-                                part1.green()
+                            if part2_success {
+                                part2.green()
                             } else {
-                                part1.red()
+                                part2.red()
                             }
                         );
-
-                        // continue to part 2 if it exists
-                        if let Some(part2) = part2 {
-                            let part2_response = session
-                                .submit_answer(2, part2)
-                                .await
-                                .map_err(|e| anyhow!("{e}"))?;
-
-                            if let Some(part2_success) = part2_response.success {
-                                // print result of part 2 if api call was successful
-                                println!(
-                                    "{}",
-                                    if part2_success {
-                                        part2.green()
-                                    } else {
-                                        part2.red()
-                                    }
-                                );
-                            } else {
-                                // throw error if part 2 submission failed
-                                return Err(anyhow!(
-                                    "failed to submit answer for part 2: {}",
-                                    part2_response
-                                        .cooldown
-                                        .unwrap_or_else(|| "unknown error".to_string())
-                                ));
-                            }
-                        }
-                    } else {
-                        // throw error if part 1 submission failed
-                        return Err(anyhow!(
-                            "failed to submit answer for part 1: {}",
-                            part1_response
-                                .cooldown
-                                .unwrap_or_else(|| "unknown error".to_string())
-                        ));
                     }
 
                     // validation was successful
                     // exit successfully to prevent further output
                     return Ok(());
-                };
+                }
             }
 
             // if no session is provided or newlines are not 1 or 2, just print the output
