@@ -28,7 +28,7 @@
       {
         packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "aoc-runtime";
-          version = "0.3.3";
+          version = "0.4.0";
           src = ./.;
 
           cargoLock = {
