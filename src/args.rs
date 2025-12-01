@@ -2,7 +2,7 @@ use chrono::{Datelike, Local};
 use clap::{Parser, ValueEnum};
 use serde::{Serialize, Serializer};
 use strum_macros::EnumIter;
-use std::{fmt, process::Command};
+use std::{fmt, path::PathBuf, process::Command};
 use anyhow::Result;
 use std::str::FromStr;
 use strum::IntoEnumIterator;
@@ -51,6 +51,25 @@ impl FromStr for Language {
 }
 
 impl Language {
+    pub fn get_base_file_source_and_dest(&self, config: &Config) -> (PathBuf, PathBuf) {
+        let file_extension = match *self {
+            Language::Rust => "rs",
+            Language::CSharp => "cs",
+            Language::Java => "java",
+            Language::Python => "py",
+        };
+
+        (
+            config.path.join(format!("base.{}", file_extension)),
+            match *self {
+                Language::Rust => config.project_path.join("src").join("main.rs"),
+                Language::CSharp => config.project_path.join("Program.cs"),
+                Language::Java => config.project_path.join("Main.java"),
+                Language::Python => config.project_path.join("main.py"),
+            }
+        )
+    }
+
     pub fn init_command(&self, config: &Config) -> Command {
         match *self {
             Language::Rust => command!("cargo", "init", "--bin", &config.project_path),

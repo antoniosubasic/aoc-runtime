@@ -18,6 +18,8 @@ pub struct Config {
     pub cookie: Option<String>,
     #[serde(skip)]
     pub project_path: PathBuf,
+    #[serde(skip)]
+    pub path: PathBuf,
 }
 
 impl Config {
@@ -34,12 +36,15 @@ impl Config {
     pub fn load() -> Result<(Self, OptionalParameters)> {
         let home = dirs::home_dir().context("could not determine home directory")?;
 
-        let config_path = home.join(".config").join("aoc").join("config.yaml");
-        let config_content = fs::read_to_string(&config_path)
-            .with_context(|| format!("failed to read config file '{}'", config_path.display()))?;
+        let config_path = home.join(".config").join("aoc");
+        let config_file = config_path.join("config.yaml");
+        let config_content = fs::read_to_string(&config_file)
+            .with_context(|| format!("failed to read config file '{}'", config_file.display()))?;
 
         let mut config: Config = serde_yml::from_str(&config_content)
-            .with_context(|| format!("failed to parse config file '{}'", config_path.display()))?;
+            .with_context(|| format!("failed to parse config file '{}'", config_file.display()))?;
+
+        config.path = config_path;
 
         if let Some(stripped) = config.template_path.strip_prefix("~/") {
             config.template_path = home.join(stripped).to_string_lossy().to_string();

@@ -187,6 +187,22 @@ async fn main() -> Result<()> {
                 &args.language.unwrap().init_command(&config).output()?,
                 false,
             )?;
+
+            let (base_file, dest_file) = args
+                .language
+                .unwrap()
+                .get_base_file_source_and_dest(&config);
+
+            if base_file.exists() {
+                fs::copy(&base_file, &dest_file).map_err(|e| {
+                    anyhow!(
+                        "failed to copy base file from '{}' to '{}': {}",
+                        base_file.display(),
+                        dest_file.display(),
+                        e
+                    )
+                })?;
+            }
         }
         Mode::Path => {
             println!("{}", config.project_path.display());
