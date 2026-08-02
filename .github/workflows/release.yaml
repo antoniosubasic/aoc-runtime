@@ -37,13 +37,10 @@ jobs:
 
       - name: 📦 Bump version in Cargo.lock
         run: cargo update --package aoc-runtime
-      
-      - name: ❄️ Bump version in flake.nix
-        run: sed -i -E "s/^(\s*)version\s*=\s*\"[0-9]+\.[0-9]+\.[0-9]+\";/\1version = \"${TAG#v}\";/" flake.nix
 
       - name: 📝 Commit (amend) bumped versions
         run: |
-          git add Cargo.toml Cargo.lock flake.nix
+          git add Cargo.toml Cargo.lock
           git commit --amend --no-edit
 
       - name: 🚀 Push new release
