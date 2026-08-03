@@ -1,206 +1,323 @@
-use anyhow::{Context, Result, anyhow};
-use regex::Regex;
-use serde::{Deserialize, Serialize};
-use std::{env, fs, ops::Range, path::PathBuf};
-use strum::IntoEnumIterator;
+//! Loading and validating `config.yaml`.
+//!
+//! ```yaml
+//! template_path: "~/projects/aoc/{{year}}/day{{pad day}}/{{language}}"
+//! cookie: "<advent of code session cookie>"
+//! editor: "code"
+//! ```
+//!
+//! Only `template_path` is required. The template is parsed - and therefore
+//! validated - at load time rather than on first use.
 
-use crate::args::{Args, Language};
+use crate::{env::Env, template::Template};
+use serde::Deserialize;
+use std::{
+    collections::BTreeMap,
+    fs, io,
+    path::{Path, PathBuf},
+};
 
-pub struct OptionalParameters {
-    pub year: Option<u16>,
-    pub day: Option<u8>,
-    pub language: Option<Language>,
+/// The default editor launched by `aoc code`.
+pub const DEFAULT_EDITOR: &str = "code";
+
+/// Validated configuration.
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// The parsed project path template.
+    pub template: Template,
+    /// The Advent of Code session cookie, if one is available.
+    pub cookie: Option<String>,
+    /// The command launched by `aoc code`.
+    pub editor: String,
+    /// The directory the configuration was loaded from.
+    pub config_dir: PathBuf,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct Config {
+/// A non-fatal problem noticed while loading configuration.
+pub type Warning = String;
+
+#[derive(Debug, Deserialize)]
+struct RawConfig {
     template_path: String,
-    pub cookie: Option<String>,
-    #[serde(skip)]
-    pub project_path: PathBuf,
-    #[serde(skip)]
-    pub path: PathBuf,
+    #[serde(default)]
+    cookie: Option<String>,
+    #[serde(default)]
+    editor: Option<String>,
+    #[serde(flatten)]
+    unknown: BTreeMap<String, serde_yaml_ng::Value>,
 }
 
 impl Config {
-    // helper function
-    fn build_param_regex(param: &str, paddable: bool) -> Regex {
-        Regex::new(&format!(
-            r"\{{\{{\s*{}{}\s*\}}\}}",
-            if paddable { r"(pad\s+)?" } else { "" },
-            param
+    /// Loads and validates the configuration described by `env`.
+    ///
+    /// Returns the configuration together with any non-fatal warnings, such as
+    /// unrecognised keys - a misspelled `cookies:` would otherwise silently
+    /// disable submission.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError`] if the file is missing, unreadable, not valid
+    /// YAML, or contains an invalid `template_path`.
+    pub fn load(env: &Env) -> Result<(Self, Vec<Warning>), ConfigError> {
+        let contents = read_config(&env.config_file)?;
+        Self::from_yaml(&contents, env)
+    }
+
+    /// Parses configuration from a YAML document, resolving paths and the
+    /// session cookie against `env`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError`] if the document is not valid YAML or the
+    /// `template_path` is not a valid template.
+    pub fn from_yaml(contents: &str, env: &Env) -> Result<(Self, Vec<Warning>), ConfigError> {
+        let raw: RawConfig =
+            serde_yaml_ng::from_str(contents).map_err(|source| ConfigError::Parse {
+                path: env.config_file.clone(),
+                source,
+            })?;
+
+        let mut warnings = Vec::new();
+        for key in raw.unknown.keys() {
+            warnings.push(format!(
+                "ignoring unknown key `{key}` in {}",
+                env.config_file.display()
+            ));
+        }
+
+        let template_path = expand_home(&raw.template_path, &env.home);
+        let template = Template::parse(&template_path).map_err(|source| ConfigError::Template {
+            path: env.config_file.clone(),
+            source,
+        })?;
+
+        let cookie = env
+            .session_cookie
+            .clone()
+            .or(raw.cookie)
+            .map(|cookie| cookie.trim().to_owned())
+            .filter(|cookie| !cookie.is_empty());
+
+        Ok((
+            Self {
+                template,
+                cookie,
+                editor: raw
+                    .editor
+                    .map(|editor| editor.trim().to_owned())
+                    .filter(|editor| !editor.is_empty())
+                    .unwrap_or_else(|| DEFAULT_EDITOR.to_owned()),
+                config_dir: env.config_dir.clone(),
+            },
+            warnings,
         ))
-        .unwrap()
+    }
+}
+
+fn read_config(path: &Path) -> Result<String, ConfigError> {
+    match fs::read_to_string(path) {
+        Ok(contents) => Ok(contents),
+        Err(source) if source.kind() == io::ErrorKind::NotFound => Err(ConfigError::NotFound {
+            path: path.to_path_buf(),
+        }),
+        Err(source) => Err(ConfigError::Read {
+            path: path.to_path_buf(),
+            source,
+        }),
+    }
+}
+
+fn expand_home(path: &str, home: &Path) -> String {
+    let expanded = match path {
+        "~" => home.to_path_buf(),
+        _ => match path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\")) {
+            Some(rest) => home.join(rest),
+            None => return path.to_owned(),
+        },
+    };
+
+    expanded.to_string_lossy().into_owned()
+}
+
+/// Errors produced while loading configuration.
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigError {
+    /// No configuration file exists.
+    #[error(
+        "no config file at {path}\n\n\
+         create it with at least a project path template, for example:\n  \
+         template_path: \"~/projects/aoc/{{{{year}}}}/day{{{{pad day}}}}/{{{{language}}}}\""
+    )]
+    NotFound {
+        /// Where the file was expected.
+        path: PathBuf,
+    },
+    /// The configuration file could not be read.
+    #[error("failed to read config file {path}")]
+    Read {
+        /// The file that could not be read.
+        path: PathBuf,
+        /// The underlying I/O error.
+        #[source]
+        source: io::Error,
+    },
+    /// The configuration file is not valid YAML, or is missing a required key.
+    #[error("failed to parse config file {path}")]
+    Parse {
+        /// The offending file.
+        path: PathBuf,
+        /// The underlying deserialisation error.
+        #[source]
+        source: serde_yaml_ng::Error,
+    },
+    /// The `template_path` is not a valid template.
+    #[error("invalid `template_path` in {path}")]
+    Template {
+        /// The offending file.
+        path: PathBuf,
+        /// The underlying template error.
+        #[source]
+        source: crate::template::TemplateError,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{language::Language, puzzle::Day, puzzle::Year, template::Params};
+
+    fn env() -> Env {
+        Env {
+            home: PathBuf::from("/home/tester"),
+            config_dir: PathBuf::from("/home/tester/.config/aoc"),
+            config_file: PathBuf::from("/home/tester/.config/aoc/config.yaml"),
+            state_dir: PathBuf::from("/home/tester/.local/state/aoc"),
+            cwd: PathBuf::from("/home/tester"),
+            session_cookie: None,
+        }
     }
 
-    pub fn load() -> Result<(Self, OptionalParameters)> {
-        let home = dirs::home_dir().context("could not determine home directory")?;
-
-        let config_path = home.join(".config").join("aoc");
-        let config_file = config_path.join("config.yaml");
-        let config_content = fs::read_to_string(&config_file)
-            .with_context(|| format!("failed to read config file '{}'", config_file.display()))?;
-
-        let mut config: Config = serde_yml::from_str(&config_content)
-            .with_context(|| format!("failed to parse config file '{}'", config_file.display()))?;
-
-        config.path = config_path;
-
-        if let Some(stripped) = config.template_path.strip_prefix("~/") {
-            config.template_path = home.join(stripped).to_string_lossy().to_string();
-        }
-
-        let mut optional_params = OptionalParameters {
-            year: None,
-            day: None,
-            language: None,
-        };
-
-        // algorithm to escape template path and insert regex patterns for parameter extraction
-        // then use pattern to extract parameters from the current working directory
-        {
-            let mut pattern = String::new();
-
-            // escaping the template path for later regex use
-            {
-                // get the location ranges of regex patterns within the template path
-                let mut regex_patterns_locations: Vec<Range<usize>> =
-                    [("year", false), ("day", true), ("language", false)]
-                        .into_iter()
-                        .flat_map(|(name, paddable)| {
-                            let re = Config::build_param_regex(name, paddable);
-                            re.find_iter(&config.template_path)
-                                .map(|m| m.start()..m.end())
-                                .collect::<Vec<Range<usize>>>()
-                        })
-                        .collect();
-
-                regex_patterns_locations.sort_by_key(|range| range.start);
-
-                let mut previous = 0;
-
-                // build the pattern by
-                // 1. escaping the template path substrings which are not contained within the regex_patterns_locations ranges
-                // 2. inserting the regex patterns (unescaped) for each range
-                for range in &regex_patterns_locations {
-                    if previous < range.start {
-                        pattern
-                            .push_str(&regex::escape(&config.template_path[previous..range.start]));
-                    }
-
-                    pattern.push_str(&config.template_path[range.clone()]);
-                    previous = range.end;
-                }
-
-                if previous < config.template_path.len() {
-                    pattern.push_str(&regex::escape(&config.template_path[previous..]));
-                }
-            }
-
-            // insert the actual regex patterns for parameter extraction
-            {
-                let replacements = [
-                    ("{{year}}", r"(?P<year>\d{4})"),
-                    ("{{day}}", r"(?P<day>[1-9]|1[0-9]|2[0-5])"),
-                    ("{{pad day}}", r"(?P<padday>0[1-9]|1[0-9]|2[0-5])"),
-                    (
-                        "{{language}}",
-                        &format!(
-                            "(?P<language>{})",
-                            Language::iter()
-                                .map(|l| l.to_string())
-                                .collect::<Vec<String>>()
-                                .join("|")
-                        ),
-                    ),
-                ];
-
-                let mut end_pattern = String::new();
-
-                // insert optional group after each pattern that lasts until the end of the string
-                // to allow for partial parameter extraction
-                for i in 0..replacements.len() {
-                    if pattern.find(replacements[i].0).is_some() {
-                        pattern = pattern.replace(
-                            replacements[i].0,
-                            &format!(
-                                "{}{}",
-                                replacements[i].1,
-                                if i < replacements.len() - 1 { "(" } else { "" }
-                            ),
-                        );
-                        if i < replacements.len() - 1 {
-                            end_pattern.push_str(")?");
-                        }
-                    }
-                }
-
-                pattern.push_str(&end_pattern);
-            }
-
-            // capture the parameters from the current working directory
-            // and store them in the optional_params (later being used to override default arguments)
-            if let Some(captures) =
-                Regex::new(&pattern)?.captures(&env::current_dir()?.to_string_lossy().into_owned())
-            {
-                optional_params.year = captures
-                    .name("year")
-                    .map(|m| m.as_str().parse().ok())
-                    .flatten();
-
-                optional_params.day = captures
-                    .name("day")
-                    .or(captures.name("padday"))
-                    .map(|m| m.as_str().parse().ok())
-                    .flatten();
-
-                optional_params.language = captures
-                    .name("language")
-                    .map(|m| m.as_str().parse().ok())
-                    .flatten();
-            }
-        }
-
-        Ok((config, optional_params))
+    fn load(yaml: &str) -> Result<(Config, Vec<Warning>), ConfigError> {
+        Config::from_yaml(yaml, &env())
     }
 
-    pub fn build(&mut self, args: &Args) -> Result<()> {
-        let mut path = self.template_path.clone();
+    fn project_path(config: &Config) -> PathBuf {
+        config.template.render(Params {
+            year: Year::new(2024).expect("valid year"),
+            day: Day::new(7).expect("valid day"),
+            language: Language::Rust,
+        })
+    }
 
-        for (name, value, paddable) in [
-            ("year", args.year.map(|y| y.to_string()), false),
-            ("day", args.day.map(|d| d.to_string()), true),
-            (
-                "language",
-                args.language.map(|lang| lang.to_string()),
-                false,
-            ),
-        ]
-        .into_iter()
-        {
-            if let Some(value) = value {
-                let re = Config::build_param_regex(name, paddable);
-                let captures = re
-                    .captures(&path)
-                    .ok_or_else(|| anyhow!("failed to find '{}' in template path", name))?;
+    #[test]
+    fn loads_a_minimal_config() {
+        let (config, warnings) =
+            load("template_path: \"/aoc/{{year}}/day{{pad day}}/{{language}}\"")
+                .expect("config should load");
 
-                let paddable = captures.get(1).is_some();
+        assert!(warnings.is_empty());
+        assert_eq!(config.cookie, None);
+        assert_eq!(config.editor, DEFAULT_EDITOR);
+        assert_eq!(project_path(&config), Path::new("/aoc/2024/day07/rust"));
+    }
 
-                path = re
-                    .replace_all(
-                        &path,
-                        if paddable {
-                            format!("{:0>2}", value)
-                        } else {
-                            value
-                        },
-                    )
-                    .to_string();
-            }
-        }
+    #[test]
+    fn expands_a_leading_tilde() {
+        let (config, _) = load("template_path: \"~/aoc/{{year}}/day{{pad day}}/{{language}}\"")
+            .expect("config should load");
 
-        self.project_path = PathBuf::from(path);
+        assert_eq!(
+            project_path(&config),
+            Path::new("/home/tester/aoc/2024/day07/rust")
+        );
+    }
 
-        Ok(())
+    #[test]
+    fn leaves_a_tilde_elsewhere_alone() {
+        let (config, _) = load("template_path: \"/aoc/~backup/{{year}}/day{{day}}\"")
+            .expect("config should load");
+
+        assert_eq!(project_path(&config), Path::new("/aoc/~backup/2024/day7"));
+    }
+
+    #[test]
+    fn reads_the_cookie_and_editor() {
+        let (config, _) = load(
+            "template_path: \"/aoc/{{year}}/day{{day}}\"\ncookie: \"  abc123  \"\neditor: nvim\n",
+        )
+        .expect("config should load");
+
+        assert_eq!(config.cookie.as_deref(), Some("abc123"));
+        assert_eq!(config.editor, "nvim");
+    }
+
+    #[test]
+    fn an_empty_cookie_is_no_cookie() {
+        let (config, _) = load("template_path: \"/aoc/{{year}}/day{{day}}\"\ncookie: \"\"\n")
+            .expect("config should load");
+
+        assert_eq!(config.cookie, None);
+    }
+
+    #[test]
+    fn the_environment_cookie_wins() {
+        let mut env = env();
+        env.session_cookie = Some("from-env".to_owned());
+
+        let (config, _) = Config::from_yaml(
+            "template_path: \"/aoc/{{year}}/day{{day}}\"\ncookie: from-file\n",
+            &env,
+        )
+        .expect("config should load");
+
+        assert_eq!(config.cookie.as_deref(), Some("from-env"));
+    }
+
+    #[test]
+    fn unknown_keys_produce_a_warning_instead_of_silence() {
+        let (config, warnings) =
+            load("template_path: \"/aoc/{{year}}/day{{day}}\"\ncookies: oops\n")
+                .expect("config should load");
+
+        assert_eq!(config.cookie, None);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("cookies"), "{warnings:?}");
+    }
+
+    #[test]
+    fn a_missing_template_path_is_an_error() {
+        let error = load("cookie: abc123").expect_err("template_path is required");
+
+        assert!(matches!(error, ConfigError::Parse { .. }), "got {error:?}");
+    }
+
+    #[test]
+    fn an_invalid_template_names_the_config_file() {
+        let error = load("template_path: \"/aoc/{{year}}\"").expect_err("day is missing");
+
+        assert!(
+            matches!(error, ConfigError::Template { .. }),
+            "got {error:?}"
+        );
+        assert!(error.to_string().contains("config.yaml"), "{error}");
+    }
+
+    #[test]
+    fn malformed_yaml_is_an_error() {
+        let error = load("template_path: [unclosed").expect_err("yaml is malformed");
+
+        assert!(matches!(error, ConfigError::Parse { .. }), "got {error:?}");
+    }
+
+    #[test]
+    fn a_missing_file_explains_how_to_create_one() {
+        let error = read_config(Path::new("/nonexistent/aoc/config.yaml"))
+            .expect_err("file should not exist");
+
+        assert!(
+            matches!(error, ConfigError::NotFound { .. }),
+            "got {error:?}"
+        );
+        assert!(error.to_string().contains("template_path"), "{error}");
     }
 }
