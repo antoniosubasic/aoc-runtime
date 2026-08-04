@@ -80,7 +80,7 @@ fn build_pattern(segments: &[Segment]) -> String {
 
     for segment in segments {
         match segment {
-            Segment::Literal(text) => pending.push_str(&regex::escape(text)),
+            Segment::Literal(text) => pending.push_str(&literal_pattern(text)),
             Segment::Year | Segment::Day { .. } | Segment::Language => {
                 pending.push_str(&placeholder_pattern(segment, &mut seen));
                 chunks.push(std::mem::take(&mut pending));
@@ -109,7 +109,28 @@ fn build_pattern(segments: &[Segment]) -> String {
         pattern.push_str(")?");
     }
 
-    pattern.push_str(r"(?:[/\\].*)?$");
+    pattern.push_str("(?:");
+    pattern.push_str(SEPARATOR);
+    pattern.push_str(".*)?$");
+    pattern
+}
+
+/// Matches either separator, whichever the template was written with: a
+/// template is configured by hand, but the working directory comes from the
+/// operating system, which on Windows always reports backslashes.
+const SEPARATOR: &str = r"[/\\]";
+
+fn literal_pattern(text: &str) -> String {
+    let mut pattern = String::with_capacity(text.len());
+    let mut rest = text;
+
+    while let Some(at) = rest.find(['/', '\\']) {
+        pattern.push_str(&regex::escape(&rest[..at]));
+        pattern.push_str(SEPARATOR);
+        rest = &rest[at + 1..];
+    }
+
+    pattern.push_str(&regex::escape(rest));
     pattern
 }
 
@@ -186,7 +207,7 @@ mod tests {
     fn generates_an_anchored_pattern_with_nested_optional_groups() {
         assert_eq!(
             matcher(CANONICAL).pattern(),
-            r"^/root/(?<year>\d{4})(?:/day(?<day>\d{1,2})(?:/(?<language>csharp|python|java|rust))?)?(?:[/\\].*)?$"
+            r"^[/\\]root[/\\](?<year>\d{4})(?:[/\\]day(?<day>\d{1,2})(?:[/\\](?<language>csharp|python|java|rust))?)?(?:[/\\].*)?$"
         );
     }
 
@@ -328,6 +349,28 @@ mod tests {
 
         assert_eq!(triple(detect(dotted, "/root/a.c/2024/day07")).0, Some(2024));
         assert_eq!(triple(detect(dotted, "/root/abc/2024/day07")).0, None);
+    }
+
+    #[test]
+    fn either_separator_matches_whichever_the_template_used() {
+        assert_eq!(
+            triple(detect(CANONICAL, r"\root\2024\day07\rust")),
+            (Some(2024), Some(7), Some(Language::Rust))
+        );
+        assert_eq!(
+            triple(detect(
+                r"C:\aoc\{{year}}\day{{pad day}}\{{language}}",
+                r"C:\aoc\2024\day07\rust"
+            )),
+            (Some(2024), Some(7), Some(Language::Rust))
+        );
+        assert_eq!(
+            triple(detect(
+                r"C:\aoc\{{year}}\day{{pad day}}\{{language}}",
+                "C:/aoc/2024/day07/rust"
+            )),
+            (Some(2024), Some(7), Some(Language::Rust))
+        );
     }
 
     #[test]
