@@ -20,7 +20,7 @@ commit_parsers = [
   { message = "^test", skip = true },
   { message = "^style", skip = true },
   { message = "^ci", skip = true },
-  { message = "^chore\\(release\\)", skip = true },
+  { message = "^chore(\\(release\\)|: release)", skip = true },
   { message = "^chore", group = "other" },
   { message = "^release", skip = true },
 ]
