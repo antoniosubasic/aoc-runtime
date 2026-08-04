@@ -153,7 +153,8 @@ Use stderr freely for progress or debugging: it passes straight through and
 never affects submission.
 
 An answer that has been accepted is remembered under `$XDG_STATE_HOME/aoc`, so
-re-running a solved puzzle verifies locally instead of submitting again.
+re-running a solved puzzle verifies locally instead of submitting again. Puzzle
+inputs are kept there too — see [Inputs](#inputs).
 
 ### Per-language commands
 
@@ -167,6 +168,24 @@ re-running a solved puzzle verifies locally instead of submitting again.
 Your solution should read its input from `../input.txt`, relative to the
 project directory — one input per day, shared across languages.
 
+### Inputs
+
+An input is personal, permanent and unchanging, so `aoc` downloads each one
+exactly once and keeps it under `$XDG_STATE_HOME/aoc/inputs`. The `input.txt`
+beside your project is a symbolic link into that directory, written whenever a
+project is missing one.
+
+The practical effect is that the download survives the solutions tree. Delete a
+project, re-scaffold a day, move `~/projects/aoc` somewhere else or clone it
+onto a second machine, and the next `aoc run` links the input back rather than
+asking the site for it again. (On Windows, where creating a link needs developer
+mode, `aoc` copies the cached input instead — the download still happens only
+once.)
+
+To force a fresh download, delete the cached copy and run again; for 2024 day 7
+that is `$XDG_STATE_HOME/aoc/inputs/2024-07.txt`. Deleting only the project's
+`input.txt` re-links it and contacts nothing.
+
 ## Environment
 
 | Variable | Effect |
@@ -174,7 +193,7 @@ project directory — one input per day, shared across languages.
 | `AOC_SESSION` | Session cookie; overrides `cookie` in the config file. |
 | `AOC_CONFIG_DIR` | Configuration directory; overrides the default location. |
 | `XDG_CONFIG_HOME` | Used as `$XDG_CONFIG_HOME/aoc` when set. |
-| `XDG_STATE_HOME` | Where accepted answers and the request throttle are cached. |
+| `XDG_STATE_HOME` | Where puzzle inputs, accepted answers and the request throttle are kept. |
 | `NO_COLOR` | Disables coloured output. |
 
 The configuration directory is the first of `--config`'s parent directory,
@@ -201,11 +220,13 @@ you run `aoc` — and the requests that are made are governed as follows.
   the site. The moment of the last request is recorded in the state directory,
   so the gap is honoured across separate invocations and not merely within a
   single run.
-- **Inputs are cached after the initial download** by `App::ensure_input` in
-  `src/app.rs`, which fetches a day's input only when `input.txt` is not
-  already on disk. To retrieve a fresh copy of an input you suspect is
-  corrupted, delete that file and run again; the replacement download is
-  throttled like any other request.
+- **Every input is downloaded at most once** by `App::ensure_input` in
+  `src/app.rs`, which asks the site for a day only when `InputStore` in
+  `src/aoc/input.rs` does not already hold it. The copy lives in the state
+  directory and each project's `input.txt` links to it, so no amount of
+  deleting, moving or re-scaffolding projects can cost a second download. To
+  retrieve a fresh copy of an input you suspect is corrupted, delete the cached
+  file itself; the replacement download is throttled like any other request.
 - **Accepted answers are cached** by `FileCache` in `src/aoc/cache.rs`, so a
   part that was already solved is verified against the local record instead of
   being re-submitted on every run.

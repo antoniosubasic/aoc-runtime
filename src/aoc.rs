@@ -6,6 +6,7 @@
 //! client to call.
 
 pub mod cache;
+pub mod input;
 pub mod live;
 pub mod throttle;
 

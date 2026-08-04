@@ -7,15 +7,15 @@ mod init;
 mod run;
 
 use crate::{
-    aoc::{AocClient, cache::AnswerCache},
+    aoc::{AocClient, cache::AnswerCache, input::InputStore},
     config::Config,
-    error::{Error, IoResultExt as _},
+    error::Error,
     process::{CommandRunner, CommandSpec},
     puzzle::Puzzle,
     report::Reporter,
     resolve::Plan,
 };
-use std::{fs, path::Path};
+use std::path::Path;
 
 /// The file a solution reads its puzzle input from.
 pub const INPUT_FILE_NAME: &str = "input.txt";
@@ -30,6 +30,10 @@ pub struct App<'a> {
     pub client: Option<&'a dyn AocClient>,
     /// Where accepted answers are remembered.
     pub cache: &'a dyn AnswerCache,
+    /// Where downloaded puzzle inputs are kept. Concrete rather than a trait,
+    /// unlike its neighbours: linking a project at a cached file is what it
+    /// does, and there is no linking without a filesystem to do it on.
+    pub inputs: &'a InputStore,
     /// Where output goes.
     pub reporter: &'a mut dyn Reporter,
 }
@@ -86,6 +90,12 @@ impl App<'_> {
         Ok(())
     }
 
+    /// Makes sure a solution has its `input.txt` to read.
+    ///
+    /// The input itself lives in the state directory and the file beside the
+    /// project is a link to it, so a day is downloaded once and never again:
+    /// a project that lost its `input.txt`, or never had one, is linked at the
+    /// copy already on disk instead of costing another request.
     fn ensure_input(&mut self, puzzle: Puzzle, project: &Path) {
         let Some(parent) = project.parent() else {
             self.reporter
@@ -98,25 +108,30 @@ impl App<'_> {
             return;
         }
 
-        let Some(client) = self.client else {
-            self.reporter.warn(&format!(
-                "no session cookie configured, so {} was not downloaded",
-                input.display()
-            ));
-            return;
-        };
+        if !self.inputs.holds(puzzle) {
+            let Some(client) = self.client else {
+                self.reporter.warn(&format!(
+                    "no session cookie configured, so {} was not downloaded",
+                    input.display()
+                ));
+                return;
+            };
 
-        let downloaded = client
-            .fetch_input(puzzle)
-            .map_err(Error::from)
-            .and_then(|text| {
-                fs::create_dir_all(parent).io_context("create input directory", parent)?;
-                fs::write(&input, text).io_context("write input file", &input)
-            });
+            let downloaded = client
+                .fetch_input(puzzle)
+                .map_err(Error::from)
+                .and_then(|text| self.inputs.store(puzzle, &text));
 
-        if let Err(error) = downloaded {
+            if let Err(error) = downloaded {
+                self.reporter
+                    .warn(&format!("could not download puzzle input: {error}"));
+                return;
+            }
+        }
+
+        if let Err(error) = self.inputs.link(puzzle, &input) {
             self.reporter
-                .warn(&format!("could not download puzzle input: {error}"));
+                .warn(&format!("could not link puzzle input: {error}"));
         }
     }
 }
@@ -125,7 +140,7 @@ impl App<'_> {
 pub(crate) mod testing {
     use super::App;
     use crate::{
-        aoc::{cache::memory::MemoryCache, fake::FakeClient},
+        aoc::{cache::memory::MemoryCache, fake::FakeClient, input::InputStore},
         config::Config,
         env::Env,
         process::fake::FakeRunner,
@@ -138,6 +153,7 @@ pub(crate) mod testing {
         pub(crate) runner: FakeRunner,
         pub(crate) client: Option<FakeClient>,
         pub(crate) cache: MemoryCache,
+        pub(crate) inputs: InputStore,
         pub(crate) reporter: RecordingReporter,
     }
 
@@ -148,6 +164,7 @@ pub(crate) mod testing {
                 runner: FakeRunner::new(),
                 client: None,
                 cache: MemoryCache::new(),
+                inputs: InputStore::new(root.join("state")),
                 reporter: RecordingReporter::new(),
             }
         }
@@ -168,6 +185,7 @@ pub(crate) mod testing {
                 runner: &self.runner,
                 client: self.client.as_ref().map(|client| client as _),
                 cache: &self.cache,
+                inputs: &self.inputs,
                 reporter: &mut self.reporter,
             }
         }
@@ -200,6 +218,7 @@ mod tests {
         puzzle::{Day, Year},
         report::Event,
     };
+    use std::fs;
 
     fn puzzle() -> Puzzle {
         Puzzle::new(

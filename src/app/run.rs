@@ -422,6 +422,70 @@ mod tests {
             fs::read_to_string(input).expect("input should exist"),
             "puzzle input"
         );
+        assert!(
+            harness.inputs.holds(puzzle()),
+            "the download must be kept where a later project can reuse it"
+        );
+    }
+
+    #[test]
+    fn a_cached_input_is_linked_rather_than_downloaded_again() {
+        let (root, project) = scaffold();
+        let mut harness =
+            Harness::new(root.path()).with_client(FakeClient::with_input("downloaded"));
+        harness
+            .inputs
+            .store(puzzle(), "cached")
+            .expect("seed the input cache");
+        harness.runner.push_stdout("").push_stdout("1227\n");
+
+        harness
+            .app()
+            .run(puzzle(), Language::Rust, &project, false)
+            .expect("run should succeed");
+
+        let input = root.path().join("2024").join("day07").join(INPUT_FILE_NAME);
+        assert_eq!(
+            fs::read_to_string(input).expect("input should exist"),
+            "cached",
+            "a puzzle already downloaded must not be fetched a second time"
+        );
+    }
+
+    // Deleting `input.txt` used to be how you forced a fresh download. It now
+    // costs a link, because the copy that matters never left the state
+    // directory.
+    #[test]
+    fn a_project_that_lost_its_input_is_relinked_without_a_request() {
+        let (root, project) = scaffold();
+        let mut harness =
+            Harness::new(root.path()).with_client(FakeClient::with_input("downloaded"));
+        harness
+            .runner
+            .push_stdout("")
+            .push_stdout("1227\n")
+            .push_stdout("")
+            .push_stdout("1227\n");
+
+        harness
+            .app()
+            .run(puzzle(), Language::Rust, &project, false)
+            .expect("first run downloads the input");
+
+        // Marking the cached copy makes it obvious which one is being read.
+        fs::write(harness.inputs.path(puzzle()), "cached").expect("mark the cached input");
+        let input = root.path().join("2024").join("day07").join(INPUT_FILE_NAME);
+        fs::remove_file(&input).expect("delete the project's input");
+
+        harness
+            .app()
+            .run(puzzle(), Language::Rust, &project, false)
+            .expect("second run relinks the input");
+
+        assert_eq!(
+            fs::read_to_string(&input).expect("input should exist"),
+            "cached"
+        );
     }
 
     #[test]

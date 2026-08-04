@@ -43,7 +43,8 @@ src/cli.rs      src/env.rs          src/config.rs      src/resolve.rs           
   variant carries exactly what its handler needs, so a mode that requires a language cannot be
   constructed without one and no downstream code re-checks.
 * **`app.rs`** holds every injected dependency (`CommandRunner`, `AocClient`, `AnswerCache`,
-  `Reporter`) and dispatches on `Plan`. `app/run.rs` and `app/init.rs` are the two real handlers.
+  `InputStore`, `Reporter`) and dispatches on `Plan`. `app/run.rs` and `app/init.rs` are the two
+  real handlers.
 
 ### Everything external sits behind a trait
 
@@ -83,7 +84,8 @@ before `Year::FIRST_SHORT` (2025) run 25 puzzles, and from 2025 on only 12 (`Day
 `answer.rs` classifies a solution's stdout: exactly one non-blank line → part one; exactly two →
 parts one and two; anything else (empty, blank line, three or more lines) → `Outcome::Raw`, printed
 verbatim with nothing submitted. Solutions read their input from `../input.txt`, one per day shared
-across languages.
+across languages — a symlink into the state directory, so it reads like a plain file and costs
+nothing to recreate.
 
 ### Adding a language
 
@@ -111,7 +113,10 @@ and the README documents these guarantees to users. Treat them as invariants:
   `aoc_api` makes on its own — `submit` reads the puzzle page when a part is already solved.
 * Every request carries `live::IDENTIFICATION` as its `User-Agent`, installed once when the HTTP
   client is built. Keep it a valid header value: ASCII, no control characters.
-* Inputs are downloaded only when `input.txt` is absent (`App::ensure_input`).
+* An input is downloaded at most once, ever. `App::ensure_input` asks the client only when
+  `aoc::input::InputStore` does not already hold the day; the stored copy lives in the state
+  directory and each project's `input.txt` is a symlink into it, so deleting or re-scaffolding a
+  project costs a link rather than a request. Do not "fix" a missing `input.txt` by refetching.
 * Accepted answers are cached (`aoc/cache.rs`) so a solved part is verified locally instead of
   re-submitted.
 * With no session cookie there is no client at all — a run provably cannot make a request.

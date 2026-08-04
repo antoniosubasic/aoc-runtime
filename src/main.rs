@@ -1,7 +1,7 @@
 //! The `aoc` command line tool.
 
 use aoc_runtime::{
-    aoc::{AocClient, cache::FileCache, live::LiveClient},
+    aoc::{AocClient, cache::FileCache, input::InputStore, live::LiveClient},
     app::App,
     cli::Cli,
     config::Config,
@@ -43,12 +43,14 @@ fn run(cli: &Cli) -> Result<(), Error> {
         .map(|cookie| LiveClient::new(cookie, &env.state_dir))
         .transpose()?;
     let cache = FileCache::new(&env.state_dir);
+    let inputs = InputStore::new(&env.state_dir);
 
     App {
         config: &config,
         runner: &SystemRunner,
         client: client.as_ref().map(|client| client as &dyn AocClient),
         cache: &cache,
+        inputs: &inputs,
         reporter: &mut reporter,
     }
     .execute(plan)

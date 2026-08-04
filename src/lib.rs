@@ -9,7 +9,8 @@
 //! ```no_run
 //! use aoc_runtime::{
 //!     app::App, cli::Cli, config::Config, env::{Env, SystemClock},
-//!     aoc::cache::FileCache, process::SystemRunner, report::TermReporter, resolve,
+//!     aoc::{cache::FileCache, input::InputStore},
+//!     process::SystemRunner, report::TermReporter, resolve,
 //! };
 //! use clap::Parser as _;
 //!
@@ -18,12 +19,14 @@
 //! let (config, _warnings) = Config::load(&env)?;
 //! let plan = resolve::plan(&cli, &config, &env.cwd, &SystemClock)?;
 //! let cache = FileCache::new(&env.state_dir);
+//! let inputs = InputStore::new(&env.state_dir);
 //!
 //! App {
 //!     config: &config,
 //!     runner: &SystemRunner,
 //!     client: None,
 //!     cache: &cache,
+//!     inputs: &inputs,
 //!     reporter: &mut TermReporter,
 //! }
 //! .execute(plan)?;
