@@ -142,8 +142,15 @@ Print your answers to stdout, one per line — part one first:
 * **Anything else** (no output, three or more lines, a blank line) → printed
   verbatim and nothing is submitted.
 
-Correct answers print green, rejected ones red. Use stderr freely for progress
-or debugging: it passes straight through and never affects submission.
+Correct answers print green and rejected ones red, with whatever else the site
+said — that the answer is too high or too low, or how long to wait before trying
+again — on stderr. An answer the site declined to judge at all prints yellow:
+either something was submitted too recently, or it was not asking for an answer
+to that part. A wait stops the run there, so the second part is not spent on a
+submission that is certain to be refused.
+
+Use stderr freely for progress or debugging: it passes straight through and
+never affects submission.
 
 An answer that has been accepted is remembered under `$XDG_STATE_HOME/aoc`, so
 re-running a solved puzzle verifies locally instead of submitting again.
@@ -182,12 +189,18 @@ This tool follows the Advent of Code
 Nothing here polls, scrapes or runs on a schedule — a request is made only when
 you run `aoc` — and the requests that are made are governed as follows.
 
+- **Every request identifies this tool**, naming the project, its version and
+  an address to reach its author. The identification is baked into the one HTTP
+  client `LiveClient` builds, so no request can go out without it.
 - **Outbound calls are throttled** by `Throttle::acquire` in
   `src/aoc/throttle.rs`, which holds a minimum gap of five seconds between
-  requests. Every request passes through it: `LiveClient` in `src/aoc/live.rs`
-  is the only code in the crate that contacts the site. The moment of the last
-  request is recorded in the state directory, so the gap is honoured across
-  separate invocations and not merely within a single run.
+  requests. It wraps the HTTP transport itself rather than the call sites, so
+  every request passes through it — including the one the client makes on its
+  own to check an answer against a part that turned out to be solved already.
+  `LiveClient` in `src/aoc/live.rs` is the only code in the crate that contacts
+  the site. The moment of the last request is recorded in the state directory,
+  so the gap is honoured across separate invocations and not merely within a
+  single run.
 - **Inputs are cached after the initial download** by `App::ensure_input` in
   `src/app.rs`, which fetches a day's input only when `input.txt` is not
   already on disk. To retrieve a fresh copy of an input you suspect is

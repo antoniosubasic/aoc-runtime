@@ -78,13 +78,21 @@ impl Reporter for TermReporter {
                 answer,
                 verdict,
             } => match &verdict {
-                Some(Verdict::Correct) => println!("{}", answer.green()),
-                Some(Verdict::Incorrect) => println!("{}", answer.red()),
-                Some(Verdict::NotAccepted { wait }) => {
-                    println!("{}", answer.yellow());
-                    eprintln!("{part}: not accepted - wait {wait} before trying again");
-                }
                 None => println!("{answer}"),
+                Some(Verdict::Correct) => println!("{}", answer.green()),
+                Some(verdict) => {
+                    // Red is an answer the site judged and rejected; yellow is
+                    // one it declined to judge, which says nothing about the
+                    // answer itself.
+                    let coloured = if verdict.is_judged() {
+                        answer.red()
+                    } else {
+                        answer.yellow()
+                    };
+
+                    println!("{coloured}");
+                    eprintln!("{part}: {verdict}");
+                }
             },
             Event::Warning(text) => eprintln!("{} {text}", "warning:".yellow().bold()),
         }

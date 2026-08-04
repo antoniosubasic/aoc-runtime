@@ -70,7 +70,10 @@ impl App<'_> {
         for (part, answer) in answers.iter() {
             let verdict = match self.cache.correct(puzzle, part) {
                 Some(known) if known == answer => Verdict::Correct,
-                Some(_) => Verdict::Incorrect,
+                Some(_) => Verdict::Incorrect {
+                    hint: None,
+                    wait: None,
+                },
                 None => {
                     let verdict = client.submit(puzzle, part, answer)?;
                     if verdict == Verdict::Correct {
@@ -80,7 +83,9 @@ impl App<'_> {
                 }
             };
 
-            let waiting = matches!(verdict, Verdict::NotAccepted { .. });
+            // A wait means nothing more can be judged for now, so submitting
+            // the next part would only spend a request on being refused.
+            let waiting = verdict.wait().is_some();
             self.reporter.answer(part, answer, Some(verdict));
 
             if waiting {
@@ -104,8 +109,16 @@ mod tests {
         puzzle::{Day, Part, Year},
         report::Event,
     };
-    use std::fs;
+    use std::{fs, time::Duration};
     use tempfile::TempDir;
+
+    /// A plain rejection, with nothing the site chose to add to it.
+    fn wrong() -> Verdict {
+        Verdict::Incorrect {
+            hint: None,
+            wait: None,
+        }
+    }
 
     fn puzzle() -> Puzzle {
         Puzzle::new(
@@ -221,7 +234,7 @@ mod tests {
     fn submits_both_parts_and_reports_verdicts() {
         let (root, project) = scaffold();
         let client = FakeClient::new();
-        client.push(Verdict::Correct).push(Verdict::Incorrect);
+        client.push(Verdict::Correct).push(wrong());
         let mut harness = Harness::new(root.path()).with_client(client);
         harness.runner.push_stdout("").push_stdout("1227\n23262\n");
 
@@ -246,7 +259,7 @@ mod tests {
                 Event::Answer {
                     part: Part::Two,
                     answer: "23262".to_owned(),
-                    verdict: Some(Verdict::Incorrect),
+                    verdict: Some(wrong()),
                 },
             ]
         );
@@ -349,8 +362,8 @@ mod tests {
     fn a_cooldown_stops_before_the_second_part() {
         let (root, project) = scaffold();
         let client = FakeClient::new();
-        client.push(Verdict::NotAccepted {
-            wait: "3m 20s".to_owned(),
+        client.push(Verdict::Cooldown {
+            wait: Duration::from_secs(200),
         });
         let mut harness = Harness::new(root.path()).with_client(client);
         harness.runner.push_stdout("").push_stdout("1227\n23262\n");
@@ -359,6 +372,31 @@ mod tests {
             .app()
             .run(puzzle(), Language::Rust, &project, true)
             .expect("a cooldown is not a failure");
+
+        assert_eq!(
+            harness.client.as_ref().expect("client").submitted().len(),
+            1
+        );
+        assert_eq!(harness.reporter.answers().len(), 1);
+    }
+
+    // A rejected answer comes back with the wait the site attached to it, so
+    // the next part is known to be refused before it is ever sent.
+    #[test]
+    fn a_wrong_answer_the_site_asks_you_to_wait_after_stops_too() {
+        let (root, project) = scaffold();
+        let client = FakeClient::new();
+        client.push(Verdict::Incorrect {
+            hint: Some(crate::aoc::Hint::TooHigh),
+            wait: Some(Duration::from_secs(60)),
+        });
+        let mut harness = Harness::new(root.path()).with_client(client);
+        harness.runner.push_stdout("").push_stdout("1227\n23262\n");
+
+        harness
+            .app()
+            .run(puzzle(), Language::Rust, &project, true)
+            .expect("a rejected answer is not a failure");
 
         assert_eq!(
             harness.client.as_ref().expect("client").submitted().len(),

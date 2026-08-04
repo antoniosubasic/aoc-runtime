@@ -106,14 +106,22 @@ and the README documents these guarantees to users. Treat them as invariants:
 
 * `aoc::live::LiveClient` is the **only** code that contacts adventofcode.com, and every request
   goes through `Throttle::acquire` first (`aoc/throttle.rs`, 5 s minimum gap, persisted to the state
-  directory so it holds *across* invocations).
+  directory so it holds *across* invocations). The throttle sits in `live.rs`'s own
+  `impl Transport for ThrottledTransport`, not at the call sites, so it also covers requests
+  `aoc_api` makes on its own — `submit` reads the puzzle page when a part is already solved.
+* Every request carries `live::IDENTIFICATION` as its `User-Agent`, installed once when the HTTP
+  client is built. Keep it a valid header value: ASCII, no control characters.
 * Inputs are downloaded only when `input.txt` is absent (`App::ensure_input`).
 * Accepted answers are cached (`aoc/cache.rs`) so a solved part is verified locally instead of
   re-submitted.
 * With no session cookie there is no client at all — a run provably cannot make a request.
 
 Also note: `LiveClient` is the only module allowed to mention `aoc_api` or `tokio`. It drives a
-current-thread runtime to completion so the rest of the crate stays synchronous.
+current-thread runtime to completion so the rest of the crate stays synchronous. `aoc.rs` owns this
+crate's own `Verdict`, `Hint` and `ApiError`; `live.rs` translates the upstream types into them
+(`verdict`, `recognised`, `translate`, `coordinates`), so nothing downstream depends on `aoc_api`.
+All three upstream enums are `#[non_exhaustive]` — keep the catch-all arms honest rather than
+guessing at a variant a newer client introduced.
 
 ## Conventions
 
