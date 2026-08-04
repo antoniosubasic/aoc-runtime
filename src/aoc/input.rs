@@ -193,7 +193,9 @@ mod tests {
 
     // A state directory that was cleared leaves every project pointing at
     // nothing. The next run downloads the input again, and the link it writes
-    // has to survive meeting the dead one.
+    // has to survive meeting the dead one. Dangling links are the premise, so
+    // this is about the platforms that link rather than copy.
+    #[cfg(unix)]
     #[test]
     fn a_link_left_over_from_a_wiped_cache_is_replaced() {
         let dir = tempfile::tempdir().expect("temp dir");
@@ -216,11 +218,36 @@ mod tests {
         );
     }
 
+    // Whatever is already at the link's place gives way, whether this platform
+    // got there by linking or by copying.
+    #[test]
+    fn linking_replaces_whatever_is_already_there() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let project = tempfile::tempdir().expect("temp dir");
+        let store = InputStore::new(dir.path());
+        let at = project.path().join("input.txt");
+
+        store.store(puzzle(), "first").expect("store input");
+        store.link(puzzle(), &at).expect("link input");
+
+        store.store(puzzle(), "second").expect("store input again");
+        store.link(puzzle(), &at).expect("relink input");
+
+        assert_eq!(
+            fs::read_to_string(&at).expect("read linked input"),
+            "second"
+        );
+    }
+
+    // A file where the state directory should be is the one way to make the
+    // store unwritable that means the same thing on every platform.
     #[test]
     fn an_unwritable_location_is_reported_rather_than_ignored() {
-        let store = InputStore::new("/proc/definitely-not-writable");
+        let dir = tempfile::tempdir().expect("temp dir");
+        let blocked = dir.path().join("state");
+        fs::write(&blocked, "a file, not a directory").expect("block the state directory");
 
-        let error = store
+        let error = InputStore::new(&blocked)
             .store(puzzle(), "puzzle input")
             .expect_err("the state directory cannot be written to");
 
