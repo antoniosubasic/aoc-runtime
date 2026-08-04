@@ -17,12 +17,19 @@ use support::{Fixture, yaml_string};
 fn help_works_without_a_config_file() {
     let fixture = Fixture::new();
 
+    // Clap names the binary as the operating system does, and Windows keeps the
+    // `.exe`.
+    let usage = format!(
+        "Usage: aoc{} [OPTIONS] [MODE]",
+        std::env::consts::EXE_SUFFIX
+    );
+
     fixture
         .command_without_config()
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Usage: aoc [OPTIONS] [MODE]"))
+        .stdout(predicate::str::contains(usage))
         .stdout(predicate::str::contains("- run:"))
         .stdout(predicate::str::contains("- init:"))
         .stdout(predicate::str::contains("- path:"))
