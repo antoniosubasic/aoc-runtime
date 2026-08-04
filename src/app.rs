@@ -201,9 +201,17 @@ pub(crate) mod testing {
             session_cookie: None,
         };
 
+        // Assembled component by component, and quoted as a single-quoted YAML
+        // scalar: a Windows path carries backslashes, which a double-quoted
+        // scalar would read as escape sequences.
+        let template = root
+            .join("{{year}}")
+            .join("day{{pad day}}")
+            .join("{{language}}");
+
         let yaml = format!(
-            "template_path: \"{}/{{{{year}}}}/day{{{{pad day}}}}/{{{{language}}}}\"",
-            root.display()
+            "template_path: '{}'",
+            template.to_string_lossy().replace('\'', "''")
         );
 
         let (config, _) = Config::from_yaml(&yaml, &env).expect("fixture config should load");

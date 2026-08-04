@@ -144,7 +144,11 @@ mod tests {
 
     #[test]
     fn an_unwritable_location_is_not_an_error() {
-        let cache = FileCache::new("/proc/definitely-not-writable");
+        let dir = tempfile::tempdir().expect("temp dir");
+        let blocked = dir.path().join("state");
+        fs::write(&blocked, "a file, not a directory").expect("block the state directory");
+
+        let cache = FileCache::new(&blocked);
 
         cache.record(puzzle(), Part::One, "1227");
         assert_eq!(cache.correct(puzzle(), Part::One), None);

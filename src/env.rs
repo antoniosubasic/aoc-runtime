@@ -232,10 +232,18 @@ mod tests {
 
     #[test]
     fn relative_directory_variables_are_ignored() {
+        // A leading slash names the root of the current drive on Windows, which
+        // is not an absolute path there.
+        let absolute = if cfg!(windows) {
+            r"C:\absolute\path"
+        } else {
+            "/absolute/path"
+        };
+
         assert_eq!(absolute_dir(Some("relative/path".to_owned())), None);
         assert_eq!(
-            absolute_dir(Some("/absolute/path".to_owned())),
-            Some(PathBuf::from("/absolute/path"))
+            absolute_dir(Some(absolute.to_owned())),
+            Some(PathBuf::from(absolute))
         );
         assert_eq!(absolute_dir(None), None);
     }

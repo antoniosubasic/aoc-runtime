@@ -11,7 +11,7 @@ mod support;
 
 use predicates::prelude::*;
 use std::fs;
-use support::Fixture;
+use support::{Fixture, yaml_string};
 
 #[test]
 fn help_works_without_a_config_file() {
@@ -99,14 +99,14 @@ fn path_prints_the_project_directory() {
         .success()
         .stdout(format!(
             "{}\n",
-            fixture.solutions().join("2024/day05/rust").display()
+            fixture.project("2024/day05/rust").display()
         ));
 }
 
 #[test]
 fn path_recovers_parameters_from_the_working_directory() {
     let fixture = Fixture::new();
-    let project = fixture.solutions().join("2019/day03/java");
+    let project = fixture.project("2019/day03/java");
 
     fixture
         .command_in(&project)
@@ -121,7 +121,7 @@ fn two_digit_days_are_recovered_correctly() {
     let fixture = Fixture::new();
 
     for day in [5, 9, 10, 15, 25] {
-        let project = fixture.solutions().join(format!("2024/day{day:02}/python"));
+        let project = fixture.project(&format!("2024/day{day:02}/python"));
 
         fixture
             .command_in(&project)
@@ -135,7 +135,7 @@ fn two_digit_days_are_recovered_correctly() {
 #[test]
 fn a_directory_deeper_than_the_project_still_resolves() {
     let fixture = Fixture::new();
-    let project = fixture.solutions().join("2024/day07/rust");
+    let project = fixture.project("2024/day07/rust");
 
     fixture
         .command_in(&project.join("src"))
@@ -170,7 +170,7 @@ fn init_scaffolds_an_interpreted_project() {
         .assert()
         .success();
 
-    let entry = fixture.solutions().join("2024/day05/python/main.py");
+    let entry = fixture.project("2024/day05/python/main.py");
     assert!(entry.is_file(), "expected {} to exist", entry.display());
     assert_eq!(fs::read_to_string(&entry).expect("entry file"), "");
 }
@@ -187,8 +187,7 @@ fn init_copies_the_base_file_over_the_entry_point() {
         .success();
 
     assert_eq!(
-        fs::read_to_string(fixture.solutions().join("2024/day05/python/main.py"))
-            .expect("entry file"),
+        fs::read_to_string(fixture.project("2024/day05/python/main.py")).expect("entry file"),
         "import sys\n\nprint('hello')\n"
     );
 }
@@ -273,8 +272,8 @@ fn a_template_missing_the_day_is_rejected_at_load_time() {
 fn an_unknown_config_key_warns_but_still_runs() {
     let fixture = Fixture::new();
     fixture.write_config(&format!(
-        "template_path: \"{}/aoc/{{{{year}}}}/day{{{{pad day}}}}/{{{{language}}}}\"\ncookies: typo\n",
-        fixture.root().display()
+        "template_path: {}\ncookies: typo\n",
+        yaml_string(fixture.template())
     ));
 
     fixture
@@ -290,8 +289,8 @@ fn an_unknown_config_key_warns_but_still_runs() {
 fn diagnostics_stay_off_stdout() {
     let fixture = Fixture::new();
     fixture.write_config(&format!(
-        "template_path: \"{}/aoc/{{{{year}}}}/day{{{{pad day}}}}/{{{{language}}}}\"\nnonsense: 1\n",
-        fixture.root().display()
+        "template_path: {}\nnonsense: 1\n",
+        yaml_string(fixture.template())
     ));
 
     let output = fixture
@@ -303,10 +302,7 @@ fn diagnostics_stay_off_stdout() {
     let stdout = String::from_utf8(output.get_output().stdout.clone()).expect("utf-8 stdout");
     assert_eq!(
         stdout.trim_end(),
-        fixture
-            .solutions()
-            .join("2024/day05/rust")
-            .to_string_lossy()
+        fixture.project("2024/day05/rust").to_string_lossy()
     );
 }
 

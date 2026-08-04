@@ -255,8 +255,9 @@ mod tests {
         let args = args_of(&commands.run);
         assert!(args.contains(&"run".to_owned()), "{args:?}");
         assert!(args.contains(&"--release".to_owned()), "{args:?}");
+        let manifest = project().join("Cargo.toml");
         assert!(
-            args.contains(&"/aoc/2024/day07/rust/Cargo.toml".to_owned()),
+            args.contains(&manifest.to_string_lossy().into_owned()),
             "{args:?}"
         );
     }
@@ -330,7 +331,7 @@ mod tests {
         assert!(commands.init.is_none());
         assert_eq!(
             args_of(&commands.build.expect("java is compiled")),
-            ["/aoc/2024/day07/java/Main.java"]
+            [path.join("Main.java").to_string_lossy().into_owned()]
         );
         assert_eq!(
             args_of(&commands.run),
