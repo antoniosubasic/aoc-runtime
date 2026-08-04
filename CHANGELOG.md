@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 From the next release onwards this file is maintained automatically by
 [release-plz](https://release-plz.dev) from the commit history.
 
+## [0.5.1](https://github.com/antoniosubasic/aoc-runtime/compare/v0.5.0...v0.5.1) - 2026-08-04
+
+### Other
+
+- release v0.5.1
+
 ## [0.5.0] - 2026-08-04
 
 Rebuilt the tool from the ground up. The command line, the configuration file,
