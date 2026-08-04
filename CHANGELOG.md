@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 From the next release onwards this file is maintained automatically by
 [release-plz](https://release-plz.dev) from the commit history.
 
-## [Unreleased]
+## [0.5.0] - 2026-08-04
 
 Rebuilt the tool from the ground up. The command line, the configuration file,
 the template placeholders, the base files and the stdout answer protocol are
@@ -88,6 +88,9 @@ all unchanged, so existing setups keep working.
   so an unrelated four-digit directory elsewhere in the path cannot match.
 - A template written as `{{ year }}` is detected as well as rendered. Rendering
   tolerated the spaces; detection did not.
+- Detection accepts either path separator, so a template written with `/` still
+  recovers the parameters from a Windows working directory, which the operating
+  system always reports with backslashes.
 - Output whose last line has no trailing newline is submitted correctly.
   `"42\n17"` used to be submitted whole as part one.
 - A project path with no directory name is an error rather than a panic.
@@ -103,4 +106,4 @@ all unchanged, so existing setups keep working.
 
 <!-- previous releases were not tracked in a changelog; see the git history -->
 
-[Unreleased]: https://github.com/antoniosubasic/aoc-runtime/compare/v0.4.0...HEAD
+[0.5.0]: https://github.com/antoniosubasic/aoc-runtime/compare/v0.4.0...v0.5.0
