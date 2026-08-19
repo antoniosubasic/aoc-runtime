@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 From the next release onwards this file is maintained automatically by
 [release-plz](https://release-plz.dev) from the commit history.
 
+## [0.6.0](https://github.com/antoniosubasic/aoc-runtime/compare/v0.5.1...v0.6.0) - 2026-08-19
+
+### Added
+
+- *(language)* [**breaking**] keep base files in base/ named after the language
+- *(config)* fall back to a COOKIE file beside config.yaml
+
+### Dependencies
+
+- *(deps)* bump h2 from 0.4.15 to 0.4.16
+
 ## [0.5.0] - 2026-08-04
 
 Rebuilt the tool from the ground up. The command line, the configuration file,
