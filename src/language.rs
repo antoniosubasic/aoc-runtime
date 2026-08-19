@@ -12,6 +12,10 @@ use std::{
     str::FromStr,
 };
 
+/// The directory inside the configuration directory holding the base files,
+/// each named after the language it starts.
+pub const BASE_DIR_NAME: &str = "base";
+
 /// A language a solution can be written in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ValueEnum)]
 #[clap(rename_all = "lowercase")]
@@ -59,7 +63,7 @@ impl Language {
     /// project, for example `~/.config/aoc/base/rust`.
     #[must_use]
     pub fn base_file(self, config_dir: &Path) -> PathBuf {
-        config_dir.join("base").join(self.name())
+        config_dir.join(BASE_DIR_NAME).join(self.name())
     }
 
     /// The file inside a project that holds the solution.

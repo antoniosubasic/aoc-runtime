@@ -4,6 +4,7 @@
 //! temporary tree, with no session cookie, so the tests cannot reach the
 //! network and cannot see the developer's own `~/.config/aoc`.
 
+use aoc_runtime::language::BASE_DIR_NAME;
 use assert_cmd::Command;
 use std::{
     fs,
@@ -80,7 +81,7 @@ impl Fixture {
     }
 
     pub(crate) fn write_base_file(&self, language: &str, contents: &str) {
-        let base = self.config_dir().join("base");
+        let base = self.config_dir().join(BASE_DIR_NAME);
         fs::create_dir_all(&base).expect("create base directory");
         fs::write(base.join(language), contents).expect("write base file");
     }
