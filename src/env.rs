@@ -27,7 +27,8 @@ pub struct Env {
     pub home: PathBuf,
     /// The directory holding `config.yaml` and the `base` directory.
     pub config_dir: PathBuf,
-    /// The configuration file itself.
+    /// The configuration file itself. Absolute, even when `--config` named a
+    /// relative path.
     pub config_file: PathBuf,
     /// Where cached answers are kept.
     pub state_dir: PathBuf,
@@ -43,7 +44,10 @@ impl Env {
     ///
     /// The configuration directory is the first of: the parent of an explicit
     /// `--config` file, `$AOC_CONFIG_DIR`, `$XDG_CONFIG_HOME/aoc`, or
-    /// `~/.config/aoc`.
+    /// `~/.config/aoc`. A relative `--config` path is resolved against the
+    /// current directory first, so both it and the directory derived from it
+    /// name a real place rather than depending on where the process later
+    /// looks from.
     ///
     /// # Errors
     ///
@@ -60,11 +64,9 @@ impl Env {
                 (dir, file)
             },
             |file| {
-                let dir = file
-                    .parent()
-                    .filter(|parent| !parent.as_os_str().is_empty())
-                    .unwrap_or_else(|| Path::new("."));
-                (dir.to_path_buf(), file.to_path_buf())
+                let file = cwd.join(file);
+                let dir = file.parent().unwrap_or(cwd.as_path()).to_path_buf();
+                (dir, file)
             },
         );
 
@@ -195,7 +197,8 @@ mod tests {
         let env =
             Env::capture(Some(Path::new("config.yaml"))).expect("environment should be capturable");
 
-        assert_eq!(env.config_dir, Path::new("."));
+        assert_eq!(env.config_dir, env.cwd);
+        assert_eq!(env.config_file, env.cwd.join("config.yaml"));
     }
 
     #[test]
