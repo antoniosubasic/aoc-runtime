@@ -77,19 +77,21 @@ impl Config {
     /// disable submission.
     ///
     /// With no cookie in the environment or the file itself, the
-    /// [`COOKIE_FILE_NAME`] file beside `config.yaml` is read as one.
+    /// [`COOKIE_FILE_NAME`] file beside `config.yaml` is read as one. A cookie
+    /// file that exists but cannot be read is a warning rather than an error,
+    /// so it cannot stop `aoc path`, `aoc code` or any other command that
+    /// needs no cookie at all.
     ///
     /// # Errors
     ///
     /// Returns [`ConfigError`] if the file is missing, unreadable, not valid
-    /// YAML, contains an invalid `template_path`, or if a cookie file exists
-    /// but cannot be read.
+    /// YAML, or contains an invalid `template_path`.
     pub fn load(env: &Env) -> Result<(Self, Vec<Warning>), ConfigError> {
         let contents = read_config(&env.config_file)?;
-        let (mut config, warnings) = Self::from_yaml(&contents, env)?;
+        let (mut config, mut warnings) = Self::from_yaml(&contents, env)?;
 
         if config.cookie.is_none() {
-            config.cookie = read_cookie(&env.config_dir.join(COOKIE_FILE_NAME))?;
+            config.cookie = read_cookie(&env.config_dir.join(COOKIE_FILE_NAME), &mut warnings);
         }
 
         Ok((config, warnings))
@@ -160,14 +162,17 @@ fn read_config(path: &Path) -> Result<String, ConfigError> {
     }
 }
 
-fn read_cookie(path: &Path) -> Result<Option<String>, ConfigError> {
+fn read_cookie(path: &Path, warnings: &mut Vec<Warning>) -> Option<String> {
     match fs::read_to_string(path) {
-        Ok(contents) => Ok(Some(contents.trim().to_owned()).filter(|cookie| !cookie.is_empty())),
-        Err(source) if source.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(source) => Err(ConfigError::Cookie {
-            path: path.to_path_buf(),
-            source,
-        }),
+        Ok(contents) => Some(contents.trim().to_owned()).filter(|cookie| !cookie.is_empty()),
+        Err(source) if source.kind() == io::ErrorKind::NotFound => None,
+        Err(source) => {
+            warnings.push(format!(
+                "ignoring unreadable cookie file {}: {source}",
+                path.display()
+            ));
+            None
+        }
     }
 }
 
@@ -213,15 +218,6 @@ pub enum ConfigError {
         /// The underlying deserialisation error.
         #[source]
         source: serde_yaml_ng::Error,
-    },
-    /// The cookie file exists but could not be read.
-    #[error("failed to read cookie file {path}")]
-    Cookie {
-        /// The file that could not be read.
-        path: PathBuf,
-        /// The underlying I/O error.
-        #[source]
-        source: io::Error,
     },
     /// The `template_path` is not a valid template.
     #[error("invalid `template_path` in {path}")]
@@ -398,6 +394,27 @@ mod tests {
             .expect("config should load");
 
         assert_eq!(config.cookie, None);
+    }
+
+    #[test]
+    fn an_unreadable_cookie_file_warns_instead_of_stopping_every_command() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        fs::write(
+            dir.path().join(CONFIG_FILE_NAME),
+            "template_path: \"/aoc/{{year}}/day{{day}}\"\n",
+        )
+        .expect("write config");
+        fs::create_dir(dir.path().join(COOKIE_FILE_NAME)).expect("create cookie directory");
+
+        let mut env = env();
+        env.config_dir = dir.path().to_path_buf();
+        env.config_file = dir.path().join(CONFIG_FILE_NAME);
+
+        let (config, warnings) = Config::load(&env).expect("an unreadable cookie is not fatal");
+
+        assert_eq!(config.cookie, None);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains(COOKIE_FILE_NAME), "{warnings:?}");
     }
 
     #[test]
