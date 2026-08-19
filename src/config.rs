@@ -257,11 +257,9 @@ mod tests {
     }
 
     /// Writes `config.yaml`, and a cookie file when one is given, into a
-    /// throwaway configuration directory, then loads it from disk.
-    fn load_from_disk(
-        yaml: &str,
-        cookie_file: Option<&str>,
-    ) -> Result<(Config, Vec<Warning>), ConfigError> {
+    /// throwaway configuration directory, and points an [`Env`] at it. The
+    /// directory is handed back so it outlives the load.
+    fn fixture(yaml: &str, cookie_file: Option<&str>) -> (tempfile::TempDir, Env) {
         let dir = tempfile::tempdir().expect("temp dir");
         fs::write(dir.path().join(CONFIG_FILE_NAME), yaml).expect("write config");
         if let Some(cookie) = cookie_file {
@@ -271,6 +269,16 @@ mod tests {
         let mut env = env();
         env.config_dir = dir.path().to_path_buf();
         env.config_file = dir.path().join(CONFIG_FILE_NAME);
+
+        (dir, env)
+    }
+
+    /// Loads a configuration written to a throwaway directory by [`fixture`].
+    fn load_from_disk(
+        yaml: &str,
+        cookie_file: Option<&str>,
+    ) -> Result<(Config, Vec<Warning>), ConfigError> {
+        let (_dir, env) = fixture(yaml, cookie_file);
 
         Config::load(&env)
     }
@@ -382,6 +390,19 @@ mod tests {
     }
 
     #[test]
+    fn the_environment_cookie_wins_over_the_cookie_file() {
+        let (_dir, mut env) = fixture(
+            "template_path: \"/aoc/{{year}}/day{{day}}\"\n",
+            Some("from-file"),
+        );
+        env.session_cookie = Some("from-env".to_owned());
+
+        let (config, _) = Config::load(&env).expect("config should load");
+
+        assert_eq!(config.cookie.as_deref(), Some("from-env"));
+    }
+
+    #[test]
     fn a_blank_cookie_file_is_no_cookie() {
         let (config, _) = load_from_disk(
             "template_path: \"/aoc/{{year}}/day{{day}}\"\n",
@@ -402,17 +423,8 @@ mod tests {
 
     #[test]
     fn an_unreadable_cookie_file_warns_instead_of_stopping_every_command() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        fs::write(
-            dir.path().join(CONFIG_FILE_NAME),
-            "template_path: \"/aoc/{{year}}/day{{day}}\"\n",
-        )
-        .expect("write config");
+        let (dir, env) = fixture("template_path: \"/aoc/{{year}}/day{{day}}\"\n", None);
         fs::create_dir(dir.path().join(COOKIE_FILE_NAME)).expect("create cookie directory");
-
-        let mut env = env();
-        env.config_dir = dir.path().to_path_buf();
-        env.config_file = dir.path().join(CONFIG_FILE_NAME);
 
         let (config, warnings) = Config::load(&env).expect("an unreadable cookie is not fatal");
 
