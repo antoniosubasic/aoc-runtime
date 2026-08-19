@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 From the next release onwards this file is maintained automatically by
 [release-plz](https://release-plz.dev) from the commit history.
 
+## [0.7.0](https://github.com/antoniosubasic/aoc-runtime/compare/v0.6.0...v0.7.0) - 2026-08-19
+
+### Changed
+
+- *(config)* [**breaking**] mark ConfigError non-exhaustive
+- *(config)* trim configured values in one place
+- *(language)* name the base directory with a constant
+
+### Documentation
+
+- *(config)* say where the cookie file is really looked for
+- record the cookie guarantees the fixes introduced
+
+### Fixed
+
+- *(config)* keep the session cookie out of Debug output
+- *(config)* [**breaking**] warn when the cookie file cannot be read, rather than stop
+- *(env)* resolve a relative --config path against the current directory
+
 ## [0.6.0](https://github.com/antoniosubasic/aoc-runtime/compare/v0.5.1...v0.6.0) - 2026-08-19
 
 ### Added
