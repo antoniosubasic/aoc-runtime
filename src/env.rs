@@ -185,11 +185,18 @@ mod tests {
 
     #[test]
     fn an_explicit_config_file_sets_the_directory_to_its_parent() {
-        let env = Env::capture(Some(Path::new("/tmp/fixture/config.yaml")))
-            .expect("environment should be capturable");
+        // A leading separator is drive-relative on Windows, so name a fully
+        // qualified path there rather than one the current drive completes.
+        let (file, dir) = if cfg!(windows) {
+            (r"C:\tmp\fixture\config.yaml", r"C:\tmp\fixture")
+        } else {
+            ("/tmp/fixture/config.yaml", "/tmp/fixture")
+        };
 
-        assert_eq!(env.config_file, Path::new("/tmp/fixture/config.yaml"));
-        assert_eq!(env.config_dir, Path::new("/tmp/fixture"));
+        let env = Env::capture(Some(Path::new(file))).expect("environment should be capturable");
+
+        assert_eq!(env.config_file, Path::new(file));
+        assert_eq!(env.config_dir, Path::new(dir));
     }
 
     #[test]
