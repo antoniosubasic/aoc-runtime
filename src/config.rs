@@ -29,7 +29,7 @@ pub const DEFAULT_EDITOR: &str = "code";
 pub const COOKIE_FILE_NAME: &str = "COOKIE";
 
 /// Validated configuration.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
     /// The parsed project path template.
     pub template: Template,
@@ -39,6 +39,20 @@ pub struct Config {
     pub editor: String,
     /// The directory the configuration was loaded from.
     pub config_dir: PathBuf,
+}
+
+/// Reports only whether a cookie is present, so no `{:?}` of a [`Config`] -
+/// or of anything holding one - can leak the session cookie into a log or a
+/// panic message.
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("template", &self.template)
+            .field("has_cookie", &self.cookie.is_some())
+            .field("editor", &self.editor)
+            .field("config_dir", &self.config_dir)
+            .finish()
+    }
 }
 
 /// A non-fatal problem noticed while loading configuration.
@@ -317,6 +331,18 @@ mod tests {
             .expect("config should load");
 
         assert_eq!(config.cookie, None);
+    }
+
+    #[test]
+    fn debug_output_redacts_the_cookie() {
+        let (config, _) =
+            load("template_path: \"/aoc/{{year}}/day{{day}}\"\ncookie: super-secret\n")
+                .expect("config should load");
+
+        let debug = format!("{config:?}");
+
+        assert!(!debug.contains("super-secret"), "{debug}");
+        assert!(debug.contains("has_cookie: true"), "{debug}");
     }
 
     #[test]
