@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 From the next release onwards this file is maintained automatically by
 [release-plz](https://release-plz.dev) from the commit history.
 
+## [0.7.1](https://github.com/antoniosubasic/aoc-runtime/compare/v0.7.0...v0.7.1) - 2026-08-19
+
+### Dependencies
+
+- *(deps)* bump aoc_api from 4.1.0 to 5.0.0
+
 ## [0.7.0](https://github.com/antoniosubasic/aoc-runtime/compare/v0.6.0...v0.7.0) - 2026-08-19
 
 ### Changed
