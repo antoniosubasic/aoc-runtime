@@ -189,7 +189,11 @@ fn expand_home(path: &str, home: &Path) -> String {
 }
 
 /// Errors produced while loading configuration.
+///
+/// Non-exhaustive: a future release may add a variant without that being a
+/// breaking change, so match with a catch-all arm.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ConfigError {
     /// No configuration file exists.
     #[error(
