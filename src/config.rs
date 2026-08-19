@@ -8,6 +8,10 @@
 //!
 //! Only `template_path` is required. The template is parsed - and therefore
 //! validated - at load time rather than on first use.
+//!
+//! The cookie may instead live in a [`COOKIE_FILE_NAME`] file beside
+//! `config.yaml`, holding nothing but the cookie, so the configuration itself
+//! carries no secret and can be committed alongside other dotfiles.
 
 use crate::{env::Env, template::Template};
 use serde::Deserialize;
@@ -19,6 +23,10 @@ use std::{
 
 /// The default editor launched by `aoc code`.
 pub const DEFAULT_EDITOR: &str = "code";
+
+/// The file beside `config.yaml` read as a raw session cookie when the
+/// configuration itself does not carry one.
+pub const COOKIE_FILE_NAME: &str = "COOKIE";
 
 /// Validated configuration.
 #[derive(Debug, Clone)]
@@ -54,17 +62,28 @@ impl Config {
     /// unrecognised keys - a misspelled `cookies:` would otherwise silently
     /// disable submission.
     ///
+    /// With no cookie in the environment or the file itself, the
+    /// [`COOKIE_FILE_NAME`] file beside `config.yaml` is read as one.
+    ///
     /// # Errors
     ///
     /// Returns [`ConfigError`] if the file is missing, unreadable, not valid
-    /// YAML, or contains an invalid `template_path`.
+    /// YAML, contains an invalid `template_path`, or if a cookie file exists
+    /// but cannot be read.
     pub fn load(env: &Env) -> Result<(Self, Vec<Warning>), ConfigError> {
         let contents = read_config(&env.config_file)?;
-        Self::from_yaml(&contents, env)
+        let (mut config, warnings) = Self::from_yaml(&contents, env)?;
+
+        if config.cookie.is_none() {
+            config.cookie = read_cookie(&env.config_dir.join(COOKIE_FILE_NAME))?;
+        }
+
+        Ok((config, warnings))
     }
 
     /// Parses configuration from a YAML document, resolving paths and the
-    /// session cookie against `env`.
+    /// session cookie against `env`. Unlike [`Config::load`], this does not
+    /// fall back to the cookie file.
     ///
     /// # Errors
     ///
@@ -127,6 +146,17 @@ fn read_config(path: &Path) -> Result<String, ConfigError> {
     }
 }
 
+fn read_cookie(path: &Path) -> Result<Option<String>, ConfigError> {
+    match fs::read_to_string(path) {
+        Ok(contents) => Ok(Some(contents.trim().to_owned()).filter(|cookie| !cookie.is_empty())),
+        Err(source) if source.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(source) => Err(ConfigError::Cookie {
+            path: path.to_path_buf(),
+            source,
+        }),
+    }
+}
+
 fn expand_home(path: &str, home: &Path) -> String {
     let expanded = match path {
         "~" => home.to_path_buf(),
@@ -170,6 +200,15 @@ pub enum ConfigError {
         #[source]
         source: serde_yaml_ng::Error,
     },
+    /// The cookie file exists but could not be read.
+    #[error("failed to read cookie file {path}")]
+    Cookie {
+        /// The file that could not be read.
+        path: PathBuf,
+        /// The underlying I/O error.
+        #[source]
+        source: io::Error,
+    },
     /// The `template_path` is not a valid template.
     #[error("invalid `template_path` in {path}")]
     Template {
@@ -184,7 +223,9 @@ pub enum ConfigError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{language::Language, puzzle::Day, puzzle::Year, template::Params};
+    use crate::{
+        env::CONFIG_FILE_NAME, language::Language, puzzle::Day, puzzle::Year, template::Params,
+    };
 
     fn env() -> Env {
         Env {
@@ -199,6 +240,25 @@ mod tests {
 
     fn load(yaml: &str) -> Result<(Config, Vec<Warning>), ConfigError> {
         Config::from_yaml(yaml, &env())
+    }
+
+    /// Writes `config.yaml`, and a cookie file when one is given, into a
+    /// throwaway configuration directory, then loads it from disk.
+    fn load_from_disk(
+        yaml: &str,
+        cookie_file: Option<&str>,
+    ) -> Result<(Config, Vec<Warning>), ConfigError> {
+        let dir = tempfile::tempdir().expect("temp dir");
+        fs::write(dir.path().join(CONFIG_FILE_NAME), yaml).expect("write config");
+        if let Some(cookie) = cookie_file {
+            fs::write(dir.path().join(COOKIE_FILE_NAME), cookie).expect("write cookie file");
+        }
+
+        let mut env = env();
+        env.config_dir = dir.path().to_path_buf();
+        env.config_file = dir.path().join(CONFIG_FILE_NAME);
+
+        Config::load(&env)
     }
 
     fn project_path(config: &Config) -> PathBuf {
@@ -271,6 +331,47 @@ mod tests {
         .expect("config should load");
 
         assert_eq!(config.cookie.as_deref(), Some("from-env"));
+    }
+
+    #[test]
+    fn the_cookie_file_stands_in_for_a_missing_cookie_key() {
+        let (config, _) = load_from_disk(
+            "template_path: \"/aoc/{{year}}/day{{day}}\"\n",
+            Some("from-file\n"),
+        )
+        .expect("config should load");
+
+        assert_eq!(config.cookie.as_deref(), Some("from-file"));
+    }
+
+    #[test]
+    fn the_configured_cookie_wins_over_the_cookie_file() {
+        let (config, _) = load_from_disk(
+            "template_path: \"/aoc/{{year}}/day{{day}}\"\ncookie: from-config\n",
+            Some("from-file"),
+        )
+        .expect("config should load");
+
+        assert_eq!(config.cookie.as_deref(), Some("from-config"));
+    }
+
+    #[test]
+    fn a_blank_cookie_file_is_no_cookie() {
+        let (config, _) = load_from_disk(
+            "template_path: \"/aoc/{{year}}/day{{day}}\"\n",
+            Some("  \n"),
+        )
+        .expect("config should load");
+
+        assert_eq!(config.cookie, None);
+    }
+
+    #[test]
+    fn no_cookie_file_is_no_cookie() {
+        let (config, _) = load_from_disk("template_path: \"/aoc/{{year}}/day{{day}}\"\n", None)
+            .expect("config should load");
+
+        assert_eq!(config.cookie, None);
     }
 
     #[test]

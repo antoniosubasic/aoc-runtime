@@ -47,13 +47,18 @@ editor: "code"
 | Key | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `template_path` | yes | | Path template for a solution directory. A leading `~` is expanded. |
-| `cookie` | no | none | Session cookie. Without it, `aoc` never contacts adventofcode.com. |
+| `cookie` | no | none | Session cookie, or a `COOKIE` file beside this one. Without it, `aoc` never contacts adventofcode.com. |
 | `editor` | no | `code` | Command run by `aoc code`. |
 
 To find your session cookie, open adventofcode.com while logged in, and copy
 the value of the `session` cookie from your browser's developer tools. It is a
 credential: treat it like a password. If you would rather not keep it in a
 file, set `AOC_SESSION` instead — it takes precedence over the config file.
+
+To keep the secret out of `config.yaml` — so the config itself can live in a
+dotfiles repository — put the cookie on its own in `~/.config/aoc/COOKIE`
+instead. It is read only when neither `AOC_SESSION` nor `cookie` supplies one,
+and its contents are taken raw, with surrounding whitespace trimmed.
 
 ### Template placeholders
 
@@ -191,14 +196,15 @@ that is `$XDG_STATE_HOME/aoc/inputs/2024-07.txt`. Deleting only the project's
 
 | Variable | Effect |
 | --- | --- |
-| `AOC_SESSION` | Session cookie; overrides `cookie` in the config file. |
+| `AOC_SESSION` | Session cookie; overrides `cookie` in the config file and the `COOKIE` file. |
 | `AOC_CONFIG_DIR` | Configuration directory; overrides the default location. |
 | `XDG_CONFIG_HOME` | Used as `$XDG_CONFIG_HOME/aoc` when set. |
 | `XDG_STATE_HOME` | Where puzzle inputs, accepted answers and the request throttle are kept. |
 | `NO_COLOR` | Disables coloured output. |
 
 The configuration directory is the first of `--config`'s parent directory,
-`$AOC_CONFIG_DIR`, `$XDG_CONFIG_HOME/aoc`, or `~/.config/aoc`.
+`$AOC_CONFIG_DIR`, `$XDG_CONFIG_HOME/aoc`, or `~/.config/aoc`. The `base`
+directory and the `COOKIE` file are looked for there too.
 
 Data goes to stdout and diagnostics go to stderr, so `cd $(aoc path)` is safe.
 
