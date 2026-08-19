@@ -126,22 +126,13 @@ impl Config {
             source,
         })?;
 
-        let cookie = env
-            .session_cookie
-            .clone()
-            .or(raw.cookie)
-            .map(|cookie| cookie.trim().to_owned())
-            .filter(|cookie| !cookie.is_empty());
+        let cookie = trimmed(env.session_cookie.clone().or(raw.cookie));
 
         Ok((
             Self {
                 template,
                 cookie,
-                editor: raw
-                    .editor
-                    .map(|editor| editor.trim().to_owned())
-                    .filter(|editor| !editor.is_empty())
-                    .unwrap_or_else(|| DEFAULT_EDITOR.to_owned()),
+                editor: trimmed(raw.editor).unwrap_or_else(|| DEFAULT_EDITOR.to_owned()),
                 config_dir: env.config_dir.clone(),
             },
             warnings,
@@ -164,7 +155,7 @@ fn read_config(path: &Path) -> Result<String, ConfigError> {
 
 fn read_cookie(path: &Path, warnings: &mut Vec<Warning>) -> Option<String> {
     match fs::read_to_string(path) {
-        Ok(contents) => Some(contents.trim().to_owned()).filter(|cookie| !cookie.is_empty()),
+        Ok(contents) => trimmed(Some(contents)),
         Err(source) if source.kind() == io::ErrorKind::NotFound => None,
         Err(source) => {
             warnings.push(format!(
@@ -174,6 +165,14 @@ fn read_cookie(path: &Path, warnings: &mut Vec<Warning>) -> Option<String> {
             None
         }
     }
+}
+
+/// Trims a configured value, treating a blank one as absent. Applied to every
+/// source a cookie can come from, so they cannot drift apart.
+fn trimmed(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
 }
 
 fn expand_home(path: &str, home: &Path) -> String {
