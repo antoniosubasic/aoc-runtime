@@ -22,7 +22,7 @@ name = "aoc"
 path = "src/main.rs"
 
 [dependencies]
-aoc_api = "4.1.0"
+aoc_api = "5.0.0"
 chrono = { version = "0.4.41", default-features = false, features = ["clock"] }
 clap = { version = "4.5.41", features = ["derive"] }
 colored = "3.0.0"
