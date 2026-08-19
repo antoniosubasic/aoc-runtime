@@ -58,7 +58,9 @@ file, set `AOC_SESSION` instead — it takes precedence over the config file.
 To keep the secret out of `config.yaml` — so the config itself can live in a
 dotfiles repository — put the cookie on its own in `~/.config/aoc/COOKIE`
 instead. It is read only when neither `AOC_SESSION` nor `cookie` supplies one,
-and its contents are taken raw, with surrounding whitespace trimmed.
+and its contents are taken raw, with surrounding whitespace trimmed. A `COOKIE`
+file that exists but cannot be read is a warning rather than an error, so it
+never stops a command that needs no cookie.
 
 ### Template placeholders
 
@@ -204,7 +206,9 @@ that is `$XDG_STATE_HOME/aoc/inputs/2024-07.txt`. Deleting only the project's
 
 The configuration directory is the first of `--config`'s parent directory,
 `$AOC_CONFIG_DIR`, `$XDG_CONFIG_HOME/aoc`, or `~/.config/aoc`. The `base`
-directory and the `COOKIE` file are looked for there too.
+directory and the `COOKIE` file are looked for there too. A relative `--config`
+path is resolved against the current directory, so `--config config.yaml` makes
+the directory you are standing in the configuration directory.
 
 Data goes to stdout and diagnostics go to stderr, so `cd $(aoc path)` is safe.
 

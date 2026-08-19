@@ -119,6 +119,9 @@ and the README documents these guarantees to users. Treat them as invariants:
 * Accepted answers are cached (`aoc/cache.rs`) so a solved part is verified locally instead of
   re-submitted.
 * With no session cookie there is no client at all — a run provably cannot make a request.
+* The cookie is never printed. `Config` and `App` both have hand-written `Debug` impls that report
+  `has_cookie`/`has_client` instead of the value; do not derive `Debug` on anything that can hold
+  the cookie.
 
 Also note: `LiveClient` is the only module allowed to mention `aoc_api` or `tokio`. It drives a
 current-thread runtime to completion so the rest of the crate stays synchronous. `aoc.rs` owns this
