@@ -25,7 +25,7 @@ pub const SESSION_VAR: &str = "AOC_SESSION";
 pub struct Env {
     /// The user's home directory, used to expand a leading `~` in templates.
     pub home: PathBuf,
-    /// The directory holding `config.yaml` and the `base.*` files.
+    /// The directory holding `config.yaml` and the `base` directory.
     pub config_dir: PathBuf,
     /// The configuration file itself.
     pub config_file: PathBuf,

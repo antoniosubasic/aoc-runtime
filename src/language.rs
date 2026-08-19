@@ -1,8 +1,8 @@
 //! Supported solution languages and the commands that drive them.
 //!
-//! Everything a language needs - its CLI name, base file extension, entry
-//! point and the commands used to scaffold, build and run it - lives in a
-//! single match arm, so adding a language is one variant and one arm.
+//! Everything a language needs - its CLI name, entry point and the commands
+//! used to scaffold, build and run it - lives in a single match arm, so adding
+//! a language is one variant and one arm.
 
 use crate::process::{CommandSpec, ProcessError};
 use clap::ValueEnum;
@@ -55,22 +55,11 @@ impl Language {
         }
     }
 
-    /// The extension of this language's base file in the config directory.
-    #[must_use]
-    pub const fn base_extension(self) -> &'static str {
-        match self {
-            Self::Rust => "rs",
-            Self::CSharp => "cs",
-            Self::Java => "java",
-            Self::Python => "py",
-        }
-    }
-
     /// The optional starting-point file copied over a freshly scaffolded
-    /// project, for example `~/.config/aoc/base.rs`.
+    /// project, for example `~/.config/aoc/base/rust`.
     #[must_use]
     pub fn base_file(self, config_dir: &Path) -> PathBuf {
-        config_dir.join(format!("base.{}", self.base_extension()))
+        config_dir.join("base").join(self.name())
     }
 
     /// The file inside a project that holds the solution.
@@ -348,22 +337,22 @@ mod tests {
             (
                 Language::Rust,
                 "/aoc/2024/day07/x/src/main.rs",
-                "/home/u/.config/aoc/base.rs",
+                "/home/u/.config/aoc/base/rust",
             ),
             (
                 Language::CSharp,
                 "/aoc/2024/day07/x/Program.cs",
-                "/home/u/.config/aoc/base.cs",
+                "/home/u/.config/aoc/base/csharp",
             ),
             (
                 Language::Java,
                 "/aoc/2024/day07/x/Main.java",
-                "/home/u/.config/aoc/base.java",
+                "/home/u/.config/aoc/base/java",
             ),
             (
                 Language::Python,
                 "/aoc/2024/day07/x/main.py",
-                "/home/u/.config/aoc/base.py",
+                "/home/u/.config/aoc/base/python",
             ),
         ];
 

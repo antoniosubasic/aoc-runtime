@@ -128,9 +128,9 @@ mod tests {
         let project = root.path().join("2024").join("day07").join("python");
         let mut harness = Harness::new(root.path());
 
-        fs::create_dir_all(&harness.config.config_dir).expect("create config dir");
-        fs::write(harness.config.config_dir.join("base.py"), "print('hi')\n")
-            .expect("write base file");
+        let base = Language::Python.base_file(&harness.config.config_dir);
+        fs::create_dir_all(base.parent().expect("base directory")).expect("create base dir");
+        fs::write(&base, "print('hi')\n").expect("write base file");
 
         harness
             .app()

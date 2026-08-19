@@ -90,9 +90,8 @@ nothing to recreate.
 ### Adding a language
 
 `language.rs` is deliberately arranged so a new language is one `Language` variant plus one arm in
-each of `name`, `base_extension`, `entry_file` and `commands`. `commands` returns
-`LanguageCommands { init, build, run, run_fallback }`; `init`/`build` are `None` when the language
-needs neither. Working directory is applied to all of them centrally by `with_working_dir`.
+each of `name`, `entry_file` and `commands`. `commands` returns `LanguageCommands { init, build,
+run, run_fallback }`; `init`/`build` are `None` when the language needs neither. Working directory is applied to all of them centrally by `with_working_dir`.
 
 ### Errors
 

@@ -79,8 +79,10 @@ impl Fixture {
         fs::write(self.config_dir().join("config.yaml"), yaml).expect("write config");
     }
 
-    pub(crate) fn write_base_file(&self, name: &str, contents: &str) {
-        fs::write(self.config_dir().join(name), contents).expect("write base file");
+    pub(crate) fn write_base_file(&self, language: &str, contents: &str) {
+        let base = self.config_dir().join("base");
+        fs::create_dir_all(&base).expect("create base directory");
+        fs::write(base.join(language), contents).expect("write base file");
     }
 
     pub(crate) fn command(&self) -> Command {

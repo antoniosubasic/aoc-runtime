@@ -185,7 +185,7 @@ fn init_scaffolds_an_interpreted_project() {
 #[test]
 fn init_copies_the_base_file_over_the_entry_point() {
     let fixture = Fixture::new();
-    fixture.write_base_file("base.py", "import sys\n\nprint('hello')\n");
+    fixture.write_base_file("python", "import sys\n\nprint('hello')\n");
 
     fixture
         .command()

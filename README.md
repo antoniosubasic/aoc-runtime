@@ -76,15 +76,16 @@ thing.
 
 ### Base files
 
-If `~/.config/aoc/base.<ext>` exists, `aoc init` copies it over the generated
-entry point, so every new project starts from your own boilerplate.
+If `~/.config/aoc/base/<language>` exists, `aoc init` copies it over the
+generated entry point, so every new project starts from your own boilerplate.
+The file is named after the language and carries no extension.
 
 | Language | Base file | Copied to |
 | --- | --- | --- |
-| `rust` | `base.rs` | `src/main.rs` |
-| `csharp` | `base.cs` | `Program.cs` |
-| `java` | `base.java` | `Main.java` |
-| `python` | `base.py` | `main.py` |
+| `rust` | `base/rust` | `src/main.rs` |
+| `csharp` | `base/csharp` | `Program.cs` |
+| `java` | `base/java` | `Main.java` |
+| `python` | `base/python` | `main.py` |
 
 ## Usage
 
