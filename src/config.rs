@@ -9,9 +9,10 @@
 //! Only `template_path` is required. The template is parsed - and therefore
 //! validated - at load time rather than on first use.
 //!
-//! The cookie may instead live in a [`COOKIE_FILE_NAME`] file beside
-//! `config.yaml`, holding nothing but the cookie, so the configuration itself
-//! carries no secret and can be committed alongside other dotfiles.
+//! The cookie may instead live in a [`COOKIE_FILE_NAME`] file in the
+//! configuration directory, holding nothing but the cookie, so the
+//! configuration itself carries no secret and can be committed alongside other
+//! dotfiles.
 
 use crate::{env::Env, template::Template};
 use serde::Deserialize;
@@ -24,7 +25,7 @@ use std::{
 /// The default editor launched by `aoc code`.
 pub const DEFAULT_EDITOR: &str = "code";
 
-/// The file beside `config.yaml` read as a raw session cookie when the
+/// The file read from [`Env::config_dir`] as a raw session cookie when the
 /// configuration itself does not carry one.
 pub const COOKIE_FILE_NAME: &str = "COOKIE";
 
@@ -77,7 +78,7 @@ impl Config {
     /// disable submission.
     ///
     /// With no cookie in the environment or the file itself, the
-    /// [`COOKIE_FILE_NAME`] file beside `config.yaml` is read as one. A cookie
+    /// [`COOKIE_FILE_NAME`] file in [`Env::config_dir`] is read as one. A cookie
     /// file that exists but cannot be read is a warning rather than an error,
     /// so it cannot stop `aoc path`, `aoc code` or any other command that
     /// needs no cookie at all.
