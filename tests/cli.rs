@@ -11,7 +11,7 @@ mod support;
 
 use predicates::prelude::*;
 use std::fs;
-use support::{Fixture, yaml_string};
+use support::{Fixture, rooted, yaml_string};
 
 #[test]
 fn help_works_without_a_config_file() {
@@ -294,7 +294,10 @@ fn a_relative_template_is_reported_against_the_config_file() {
 #[test]
 fn an_invalid_template_is_reported_against_the_config_file() {
     let fixture = Fixture::new();
-    fixture.write_config("template_path: \"/aoc/{{year}}/{{month}}\"\n");
+    fixture.write_config(&format!(
+        "template_path: {}\n",
+        yaml_string(&rooted("/aoc/{{year}}/{{month}}"))
+    ));
 
     fixture
         .command()
@@ -308,7 +311,10 @@ fn an_invalid_template_is_reported_against_the_config_file() {
 #[test]
 fn a_template_missing_the_day_is_rejected_at_load_time() {
     let fixture = Fixture::new();
-    fixture.write_config("template_path: \"/aoc/{{year}}/{{language}}\"\n");
+    fixture.write_config(&format!(
+        "template_path: {}\n",
+        yaml_string(&rooted("/aoc/{{year}}/{{language}}"))
+    ));
 
     fixture
         .command()
@@ -365,7 +371,10 @@ fn an_explicit_config_file_overrides_the_default_location() {
     fs::create_dir_all(&elsewhere).expect("create dir");
     fs::write(
         elsewhere.join("other.yaml"),
-        "template_path: \"/somewhere/{{year}}/day{{day}}/{{language}}\"\n",
+        format!(
+            "template_path: {}\n",
+            yaml_string(&rooted("/somewhere/{{year}}/day{{day}}/{{language}}"))
+        ),
     )
     .expect("write config");
 
@@ -384,7 +393,7 @@ fn an_explicit_config_file_overrides_the_default_location() {
         ])
         .assert()
         .success()
-        .stdout("/somewhere/2024/day5/rust\n");
+        .stdout(format!("{}\n", rooted("/somewhere/2024/day5/rust")));
 }
 
 #[test]

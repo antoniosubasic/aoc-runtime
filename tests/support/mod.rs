@@ -140,3 +140,15 @@ fn resolved(path: &Path) -> PathBuf {
     // cannot serve as a process working directory.
     PathBuf::from(text.strip_prefix(r"\\?\").unwrap_or(&text).to_owned())
 }
+
+/// The drive the paths these tests spell out by hand sit on. A path that merely
+/// starts with a separator is drive-relative on Windows, and `Config` refuses a
+/// `template_path` that is not absolute.
+const DRIVE: &str = if cfg!(windows) { "C:" } else { "" };
+
+/// A path below [`DRIVE`], written with `/` and handed back with the platform's
+/// own separator - the form a hand-written `template_path` has to take to be
+/// absolute on both platforms.
+pub(crate) fn rooted(path: &str) -> String {
+    format!("{DRIVE}{}", path.replace('/', MAIN_SEPARATOR_STR))
+}
