@@ -113,8 +113,11 @@ pub trait Confirm {
 /// Asks on the terminal, unless the answer was already given on the command
 /// line.
 ///
-/// Refusing when standard input is not a terminal is the point: a destructive
-/// command that cannot ask must not assume the answer it wants.
+/// Refusing when there is no terminal to ask on is the point: a destructive
+/// command that cannot ask must not assume the answer it wants. Both streams
+/// it uses have to be a terminal - the question goes to standard error and the
+/// answer comes back on standard input - or the user would be left waiting on
+/// a prompt that was written somewhere they cannot see.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TermConfirm {
     assume_yes: bool,
@@ -135,7 +138,7 @@ impl Confirm for TermConfirm {
         }
 
         let stdin = io::stdin();
-        if !stdin.is_terminal() {
+        if !stdin.is_terminal() || !io::stderr().is_terminal() {
             return Err(Error::ConfirmationRequired);
         }
 
