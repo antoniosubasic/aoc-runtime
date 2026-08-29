@@ -311,7 +311,7 @@ fn cargo_commands(project: &Path) -> Result<LanguageCommands, ProcessError> {
             project
                 .join("target")
                 .join("release")
-                .join(directory_name(project)?),
+                .join(build::executable(directory_name(project)?)),
         ),
         run_fallback: Some(cargo(&["run", "--release", "--quiet"])),
     })
@@ -340,7 +340,7 @@ fn dotnet_commands(project: &Path) -> Result<LanguageCommands, ProcessError> {
                 .arg(&output)
                 .arg(project),
         ),
-        run: CommandSpec::new(output.join(directory_name(project)?)),
+        run: CommandSpec::new(output.join(build::executable(directory_name(project)?))),
         run_fallback: Some(
             CommandSpec::new("dotnet")
                 .args(["run", "-c", "Release", "-v", "q", "--project"])
@@ -404,6 +404,11 @@ mod tests {
     use super::*;
 
     const ARTIFACTS: &str = "/state/builds/2024-07/c";
+
+    /// A built binary's path, spelled the way the platform spells it.
+    fn built(directory: &str, stem: &str) -> String {
+        format!("{directory}/{stem}{}", std::env::consts::EXE_SUFFIX)
+    }
 
     fn project() -> PathBuf {
         PathBuf::from("/aoc/2024/day07/rust")
@@ -543,7 +548,7 @@ mod tests {
 
         assert_eq!(
             commands.run.program(),
-            OsStr::new("/aoc/2024/day07/rust/target/release/rust")
+            OsStr::new(&built("/aoc/2024/day07/rust/target/release", "rust"))
         );
         assert!(args_of(&commands.run).is_empty());
     }
@@ -617,7 +622,7 @@ mod tests {
 
         assert_eq!(
             commands.run.program(),
-            OsStr::new("/aoc/2024/day07/csharp/bin/Release/csharp")
+            OsStr::new(&built("/aoc/2024/day07/csharp/bin/Release", "csharp"))
         );
         assert_eq!(
             args_of(&build),
@@ -763,14 +768,13 @@ mod tests {
         let project = PathBuf::from("/aoc/2024/day07/go");
         let commands = commands_for(Language::Go, &project);
 
+        let binary = built("/state/builds/2024-07/go", "bin");
+
         assert_eq!(
             args_of(&commands.build.expect("go is compiled")),
-            ["build", "-o", "/state/builds/2024-07/go/bin", "."]
+            ["build", "-o", &binary, "."]
         );
-        assert_eq!(
-            commands.run.program(),
-            OsStr::new("/state/builds/2024-07/go/bin")
-        );
+        assert_eq!(commands.run.program(), OsStr::new(&binary));
     }
 
     #[test]
@@ -784,7 +788,7 @@ mod tests {
             let project = project().with_file_name(language.name());
             let commands = commands_for(language, &project);
             let build = commands.build.expect("compiled");
-            let binary = format!("/state/builds/2024-07/{}/bin", language.name());
+            let binary = built(&format!("/state/builds/2024-07/{}", language.name()), "bin");
 
             assert_eq!(build.program(), OsStr::new(compiler));
             assert_eq!(
@@ -862,9 +866,7 @@ mod tests {
             Language::C.build_directory(layout(&project, artifacts)),
             Some(artifacts)
         );
-        assert!(
-            args_of(&commands.build.expect("c is compiled")).contains(&format!("{ARTIFACTS}/bin"))
-        );
+        assert!(args_of(&commands.build.expect("c is compiled")).contains(&built(ARTIFACTS, "bin")));
     }
 
     #[test]

@@ -12,11 +12,14 @@ use crate::{
     puzzle::Puzzle,
 };
 use std::{
+    env,
+    ffi::{OsStr, OsString},
     fs, io,
     path::{Path, PathBuf},
 };
 
-/// The single file a directly compiled language builds to.
+/// The stem of the single file a directly compiled language builds to;
+/// [`binary`] spells it the way the platform spells an executable.
 pub const BINARY_NAME: &str = "bin";
 
 /// Compiled solutions, one directory per puzzle and language under the state
@@ -64,7 +67,20 @@ impl BuildStore {
 /// directory.
 #[must_use]
 pub fn binary(artifacts: &Path) -> PathBuf {
-    artifacts.join(BINARY_NAME)
+    artifacts.join(executable(BINARY_NAME))
+}
+
+/// The file name a compiler gives an executable built from `stem`: the stem
+/// itself on Unix, `stem.exe` on Windows.
+///
+/// Both halves of a compiled language have to agree on it - the compiler is
+/// told to write this name and the run invokes it - so it is written down
+/// once, here.
+#[must_use]
+pub fn executable(stem: impl AsRef<OsStr>) -> OsString {
+    let mut name = stem.as_ref().to_os_string();
+    name.push(env::consts::EXE_SUFFIX);
+    name
 }
 
 #[cfg(test)]
@@ -154,7 +170,18 @@ mod tests {
     fn the_binary_sits_directly_inside_the_build_directory() {
         assert_eq!(
             binary(Path::new("/state/builds/2024-07/c")),
-            Path::new("/state/builds/2024-07/c/bin")
+            Path::new(&format!(
+                "/state/builds/2024-07/c/bin{}",
+                env::consts::EXE_SUFFIX
+            ))
+        );
+    }
+
+    #[test]
+    fn a_built_executable_carries_the_suffix_the_platform_gives_it() {
+        assert_eq!(
+            executable("solution"),
+            format!("solution{}", env::consts::EXE_SUFFIX).as_str()
         );
     }
 }
