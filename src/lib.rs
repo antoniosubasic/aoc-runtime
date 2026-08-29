@@ -50,4 +50,5 @@ pub mod process;
 pub mod puzzle;
 pub mod report;
 pub mod resolve;
+mod store;
 pub mod template;

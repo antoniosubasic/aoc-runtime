@@ -9,6 +9,7 @@
 use crate::{
     error::{Error, IoResultExt as _},
     puzzle::Puzzle,
+    store,
 };
 use std::{
     fs, io,
@@ -61,10 +62,7 @@ impl InputStore {
     ///
     /// Returns [`Error::Io`] if the directory exists and cannot be removed.
     pub fn clear(&self) -> Result<(), Error> {
-        match fs::remove_dir_all(&self.root) {
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-            result => result.io_context("remove cached inputs", &self.root),
-        }
+        store::remove_tree(&self.root, "remove cached inputs")
     }
 
     /// Writes a freshly downloaded input to the store.
@@ -293,15 +291,6 @@ mod tests {
             dir.path().exists(),
             "the state directory itself must remain"
         );
-    }
-
-    #[test]
-    fn clearing_a_store_that_was_never_used_is_not_an_error() {
-        let dir = tempfile::tempdir().expect("temp dir");
-
-        InputStore::new(dir.path())
-            .clear()
-            .expect("nothing to remove is not a failure");
     }
 
     #[test]

@@ -6,15 +6,10 @@
 //! Directories are named after the puzzle exactly as
 //! [`InputStore`](crate::aoc::input::InputStore) names inputs.
 
-use crate::{
-    error::{Error, IoResultExt as _},
-    language::Language,
-    puzzle::Puzzle,
-};
+use crate::{error::Error, language::Language, puzzle::Puzzle, store};
 use std::{
     env,
     ffi::{OsStr, OsString},
-    fs, io,
     path::{Path, PathBuf},
 };
 
@@ -56,10 +51,7 @@ impl BuildStore {
     ///
     /// Returns [`Error::Io`] if the directory exists and cannot be removed.
     pub fn clear(&self) -> Result<(), Error> {
-        match fs::remove_dir_all(&self.root) {
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-            result => result.io_context("remove build output", &self.root),
-        }
+        store::remove_tree(&self.root, "remove build output")
     }
 }
 
@@ -155,15 +147,6 @@ mod tests {
             dir.path().exists(),
             "the state directory itself must remain"
         );
-    }
-
-    #[test]
-    fn clearing_a_store_that_was_never_used_is_not_an_error() {
-        let dir = tempfile::tempdir().expect("temp dir");
-
-        BuildStore::new(dir.path())
-            .clear()
-            .expect("nothing to remove is not a failure");
     }
 
     #[test]

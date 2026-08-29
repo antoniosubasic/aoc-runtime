@@ -30,7 +30,6 @@ use std::{
 /// ordinary use the throttle never actually waits.
 pub const MIN_INTERVAL: Duration = Duration::from_secs(5);
 
-/// The file, inside the state directory, holding the last request's timestamp.
 /// The file holding the time of the last request, sitting at the root of the
 /// state directory rather than inside any of the caches.
 ///

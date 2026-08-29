@@ -116,14 +116,16 @@ compiler and the run cannot disagree about the name of what was built.
 
 `build.rs` is the other half of `env.state_dir`'s job: `BuildStore::dir(puzzle, language)` names
 `$XDG_STATE_HOME/aoc/builds/<year>-<day>/<language>`, keyed by `Puzzle::slug` exactly as
-`InputStore` keys inputs. It holds output for the languages compiled *by hand* (`java`, `go`, `c`,
+`InputStore` and `FileCache` key inputs and answers. It holds output for the languages compiled *by hand* (`java`, `go`, `c`,
 `cpp`), which have no output directory of their own — their `commands` arm must aim every output
 path at `layout.artifacts`.
 
 `BuildStore::clear` empties the whole tree; it is what a bare `aoc clean` does, and it is safe
 precisely because everything under it is regenerable. `InputStore` and `AnswerCache` grew the same
-`clear` for `clean --all`, and each store owns the removal of its own directory so nothing else
-repeats the `join("builds")`/`join("inputs")`/`join("answers")` literals. `clean --all` asks only
+`clear` for `clean --all`, and each store owns its own root so nothing else repeats the
+`join("builds")`/`join("inputs")`/`join("answers")` literals; the removal itself is
+`store::remove_tree`, the one place where "a tree that was never created is already empty" is
+written down. `clean --all` asks only
 when an input or an answer is actually stored, so an unattended run with nothing to remove is not
 refused.
 

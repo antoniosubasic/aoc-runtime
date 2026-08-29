@@ -6,10 +6,11 @@
 //! run.
 
 use crate::{
-    error::{Error, IoResultExt as _},
+    error::Error,
     puzzle::{Part, Puzzle},
+    store,
 };
-use std::{fs, io, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 /// Stores answers known to be correct.
 pub trait AnswerCache {
@@ -53,12 +54,8 @@ impl FileCache {
     }
 
     fn path(&self, puzzle: Puzzle, part: Part) -> PathBuf {
-        self.root.join(format!(
-            "{}-{:02}-part{}",
-            puzzle.year.get(),
-            puzzle.day.get(),
-            part.number()
-        ))
+        self.root
+            .join(format!("{}-part{}", puzzle.slug(), part.number()))
     }
 }
 
@@ -85,10 +82,7 @@ impl AnswerCache for FileCache {
     }
 
     fn clear(&self) -> Result<(), Error> {
-        match fs::remove_dir_all(&self.root) {
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-            result => result.io_context("remove cached answers", &self.root),
-        }
+        store::remove_tree(&self.root, "remove cached answers")
     }
 }
 
@@ -210,15 +204,6 @@ mod tests {
             dir.path().exists(),
             "the state directory itself must remain"
         );
-    }
-
-    #[test]
-    fn clearing_a_cache_that_was_never_written_to_is_not_an_error() {
-        let dir = tempfile::tempdir().expect("temp dir");
-
-        FileCache::new(dir.path())
-            .clear()
-            .expect("nothing to remove is not a failure");
     }
 
     #[test]
