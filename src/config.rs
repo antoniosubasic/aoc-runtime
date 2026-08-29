@@ -237,9 +237,10 @@ pub enum ConfigError {
     /// The `template_path` does not start at the root of the filesystem.
     #[error(
         "`template_path` in {path} is relative: `{template}`\n\n\
-         it must be absolute - start it with `~/` or `/` - because a solution \
-         runs with its project as the working directory, and a relative \
-         template would be read against whichever directory that happens to be"
+         it must be absolute - a leading `~/` is expanded to your home \
+         directory - because a solution runs with its project as the working \
+         directory, and a relative template would be read against whichever \
+         directory that happens to be"
     )]
     RelativeTemplate {
         /// The offending file.
