@@ -1,9 +1,10 @@
 //! Turning command line arguments into a concrete plan of work.
 //!
 //! Resolution is pure: it takes the parsed arguments, the configuration, a
-//! directory and a clock, and produces a [`Plan`] whose variants carry exactly
-//! what their handler needs. A mode that requires a language cannot be
-//! constructed without one, so no downstream code has to re-check.
+//! directory and a clock, and produces one [`Plan`] per requested mode, whose
+//! variants carry exactly what their handler needs. A mode that requires a
+//! language cannot be constructed without one, so no downstream code has to
+//! re-check.
 
 use crate::{
     cli::{Cli, Mode},
@@ -56,23 +57,26 @@ pub enum Plan {
     },
 }
 
-/// Resolves arguments, the working directory and the clock into a [`Plan`].
+/// Resolves arguments, the working directory and the clock into one [`Plan`]
+/// per requested mode, in the order the modes were given.
 ///
 /// Precedence for each value is: explicit argument, then whatever the working
 /// directory reveals through the configured template, then a date-based
-/// default.
+/// default. The puzzle and the project directory are shared by every mode; no
+/// mode observes what the ones before it did.
 ///
 /// # Errors
 ///
-/// Returns [`ResolveError::LanguageRequired`] if the mode needs a language and
+/// Returns [`ResolveError::LanguageRequired`] if a mode needs a language and
 /// none could be determined, or [`ResolveError::Template`] if the template's
-/// matcher cannot be compiled.
+/// matcher cannot be compiled. Either way nothing is returned, so a failing
+/// mode is caught before any of them executes.
 pub fn plan(
     cli: &Cli,
     config: &Config,
     cwd: &Path,
     clock: &dyn Clock,
-) -> Result<Plan, ResolveError> {
+) -> Result<Vec<Plan>, ResolveError> {
     let today = clock.today();
     let detected = config.template.matcher()?.detect(cwd);
 
@@ -90,34 +94,43 @@ pub fn plan(
 
     let puzzle = Puzzle::new(year, day).ok_or(ResolveError::DayOutOfRange { year, day })?;
     let language = cli.language.or(detected.language);
-
-    if !cli.mode.needs_language() {
-        return Ok(Plan::Url { puzzle });
-    }
-
-    let language = language.ok_or(ResolveError::LanguageRequired { mode: cli.mode })?;
-    let project = config.template.render(Params {
-        year,
-        day,
-        language,
+    let project = language.map(|language| {
+        config.template.render(Params {
+            year,
+            day,
+            language,
+        })
     });
 
-    Ok(match cli.mode {
-        Mode::Run => Plan::Run {
-            puzzle,
-            language,
-            project,
-            submit: !cli.no_submit,
-        },
-        Mode::Init => Plan::Init {
-            puzzle,
-            language,
-            project,
-        },
-        Mode::Path => Plan::Path { project },
-        Mode::Code => Plan::Code { project },
-        Mode::Url => Plan::Url { puzzle },
-    })
+    cli.modes
+        .iter()
+        .map(|&mode| {
+            if !mode.needs_language() {
+                return Ok(Plan::Url { puzzle });
+            }
+
+            let (language, project) = language
+                .zip(project.clone())
+                .ok_or(ResolveError::LanguageRequired { mode })?;
+
+            Ok(match mode {
+                Mode::Run => Plan::Run {
+                    puzzle,
+                    language,
+                    project,
+                    submit: !cli.no_submit,
+                },
+                Mode::Init => Plan::Init {
+                    puzzle,
+                    language,
+                    project,
+                },
+                Mode::Path => Plan::Path { project },
+                Mode::Code => Plan::Code { project },
+                Mode::Url => Plan::Url { puzzle },
+            })
+        })
+        .collect()
 }
 
 /// The most recent event that has started on the given date.
@@ -214,8 +227,15 @@ mod tests {
         Year::new(year).expect("valid year")
     }
 
-    fn resolve(args: &[&str], cwd: &str, today: NaiveDate) -> Result<Plan, ResolveError> {
+    fn resolve_all(args: &[&str], cwd: &str, today: NaiveDate) -> Result<Vec<Plan>, ResolveError> {
         plan(&cli(args), &config(), Path::new(cwd), &FixedClock(today))
+    }
+
+    fn resolve_one(args: &[&str], cwd: &str, today: NaiveDate) -> Result<Plan, ResolveError> {
+        resolve_all(args, cwd, today).map(|mut plans| {
+            assert_eq!(plans.len(), 1, "a single mode should produce a single plan");
+            plans.pop().expect("just asserted there is one")
+        })
     }
 
     fn puzzle_of(plan: &Plan) -> Option<Puzzle> {
@@ -282,7 +302,7 @@ mod tests {
 
     #[test]
     fn explicit_arguments_win_over_everything() {
-        let plan = resolve(
+        let plan = resolve_one(
             &["-y", "2019", "-d", "3", "-l", "java", "path"],
             "/root/2024/day07/rust",
             date(2024, 12, 14),
@@ -294,7 +314,7 @@ mod tests {
 
     #[test]
     fn the_working_directory_wins_over_date_defaults() {
-        let plan = resolve(&["path"], "/root/2019/day03/java", date(2024, 12, 14))
+        let plan = resolve_one(&["path"], "/root/2019/day03/java", date(2024, 12, 14))
             .expect("plan should resolve");
 
         assert_eq!(project_of(&plan), Some(Path::new("/root/2019/day03/java")));
@@ -302,7 +322,7 @@ mod tests {
 
     #[test]
     fn date_defaults_apply_when_nothing_else_does() {
-        let plan = resolve(&["-l", "rust", "path"], "/elsewhere", date(2024, 12, 14))
+        let plan = resolve_one(&["-l", "rust", "path"], "/elsewhere", date(2024, 12, 14))
             .expect("plan should resolve");
 
         assert_eq!(project_of(&plan), Some(Path::new("/root/2024/day14/rust")));
@@ -310,7 +330,7 @@ mod tests {
 
     #[test]
     fn a_partial_directory_fills_the_rest_from_defaults() {
-        let plan = resolve(&["-l", "rust", "path"], "/root/2019", date(2024, 12, 14))
+        let plan = resolve_one(&["-l", "rust", "path"], "/root/2019", date(2024, 12, 14))
             .expect("plan should resolve");
 
         assert_eq!(project_of(&plan), Some(Path::new("/root/2019/day14/rust")));
@@ -318,7 +338,7 @@ mod tests {
 
     #[test]
     fn an_explicit_day_the_event_never_had_is_an_error() {
-        let error = resolve(
+        let error = resolve_one(
             &["-y", "2025", "-d", "20", "url"],
             "/elsewhere",
             date(2025, 12, 20),
@@ -334,7 +354,7 @@ mod tests {
 
     #[test]
     fn a_detected_day_the_event_never_had_falls_back_to_the_default() {
-        let plan = resolve(&["path"], "/root/2025/day20/rust", date(2025, 12, 5))
+        let plan = resolve_one(&["path"], "/root/2025/day20/rust", date(2025, 12, 5))
             .expect("plan should resolve");
 
         assert_eq!(project_of(&plan), Some(Path::new("/root/2025/day05/rust")));
@@ -342,7 +362,7 @@ mod tests {
 
     #[test]
     fn a_shortened_event_still_accepts_its_own_days() {
-        let plan = resolve(
+        let plan = resolve_one(
             &["-y", "2025", "-d", "12", "url"],
             "/elsewhere",
             date(2026, 1, 1),
@@ -357,7 +377,8 @@ mod tests {
 
     #[test]
     fn url_needs_no_language() {
-        let plan = resolve(&["url"], "/elsewhere", date(2024, 12, 5)).expect("plan should resolve");
+        let plan =
+            resolve_one(&["url"], "/elsewhere", date(2024, 12, 5)).expect("plan should resolve");
 
         assert_eq!(
             plan,
@@ -374,7 +395,7 @@ mod tests {
     #[test]
     fn other_modes_require_a_language() {
         for mode in ["run", "init", "path", "code"] {
-            let error = resolve(&[mode], "/elsewhere", date(2024, 12, 5))
+            let error = resolve_one(&[mode], "/elsewhere", date(2024, 12, 5))
                 .expect_err("language is required");
 
             assert!(
@@ -387,13 +408,13 @@ mod tests {
 
     #[test]
     fn run_submits_unless_told_otherwise() {
-        let submitting = resolve(
+        let submitting = resolve_one(
             &["-l", "rust", "run"],
             "/root/2024/day07/rust",
             date(2024, 12, 7),
         )
         .expect("plan should resolve");
-        let quiet = resolve(
+        let quiet = resolve_one(
             &["-l", "rust", "--no-submit", "run"],
             "/root/2024/day07/rust",
             date(2024, 12, 7),
@@ -405,28 +426,57 @@ mod tests {
     }
 
     #[test]
+    fn every_mode_gets_a_plan_in_the_order_given() {
+        let plans = resolve_all(
+            &["init", "code", "url"],
+            "/root/2024/day07/rust",
+            date(2024, 12, 7),
+        )
+        .expect("plans should resolve");
+
+        assert!(
+            matches!(
+                plans.as_slice(),
+                [Plan::Init { .. }, Plan::Code { .. }, Plan::Url { .. }]
+            ),
+            "{plans:?}"
+        );
+    }
+
+    #[test]
+    fn a_missing_language_fails_before_any_plan_is_made() {
+        let error = resolve_all(&["url", "path"], "/elsewhere", date(2024, 12, 5))
+            .expect_err("path needs a language");
+
+        assert!(
+            matches!(error, ResolveError::LanguageRequired { mode: Mode::Path }),
+            "{error:?}"
+        );
+    }
+
+    #[test]
     fn each_mode_produces_its_own_plan() {
         let cwd = "/root/2024/day07/rust";
         let today = date(2024, 12, 7);
 
         assert!(matches!(
-            resolve(&["run"], cwd, today),
+            resolve_one(&["run"], cwd, today),
             Ok(Plan::Run { .. })
         ));
         assert!(matches!(
-            resolve(&["init"], cwd, today),
+            resolve_one(&["init"], cwd, today),
             Ok(Plan::Init { .. })
         ));
         assert!(matches!(
-            resolve(&["path"], cwd, today),
+            resolve_one(&["path"], cwd, today),
             Ok(Plan::Path { .. })
         ));
         assert!(matches!(
-            resolve(&["code"], cwd, today),
+            resolve_one(&["code"], cwd, today),
             Ok(Plan::Code { .. })
         ));
         assert!(matches!(
-            resolve(&["url"], cwd, today),
+            resolve_one(&["url"], cwd, today),
             Ok(Plan::Url { .. })
         ));
     }

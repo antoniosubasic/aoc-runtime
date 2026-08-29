@@ -35,7 +35,7 @@ fn run(cli: &Cli) -> Result<(), Error> {
         reporter.warn(warning);
     }
 
-    let plan = resolve::plan(cli, &config, &env.cwd, &SystemClock)?;
+    let plans = resolve::plan(cli, &config, &env.cwd, &SystemClock)?;
 
     let client = config
         .cookie
@@ -45,13 +45,14 @@ fn run(cli: &Cli) -> Result<(), Error> {
     let cache = FileCache::new(&env.state_dir);
     let inputs = InputStore::new(&env.state_dir);
 
-    App {
+    let mut app = App {
         config: &config,
         runner: &SystemRunner,
         client: client.as_ref().map(|client| client as &dyn AocClient),
         cache: &cache,
         inputs: &inputs,
         reporter: &mut reporter,
-    }
-    .execute(plan)
+    };
+
+    app.execute_all(plans)
 }

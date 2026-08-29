@@ -1,5 +1,7 @@
-//! Executing a resolved [`Plan`].
+//! Executing resolved [`Plan`]s.
 //!
+//! Plans are carried out one after another in the order they were resolved,
+//! stopping at the first failure; nothing is passed from one to the next.
 //! Every outside dependency is injected, so each handler can be driven end to
 //! end in a test with a fake runner, a fake client and a temporary directory.
 
@@ -48,6 +50,20 @@ impl std::fmt::Debug for App<'_> {
 }
 
 impl App<'_> {
+    /// Carries out plans in order, stopping at the first failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] from the first plan that could not be completed; the
+    /// plans after it are not attempted.
+    pub fn execute_all(&mut self, plans: Vec<Plan>) -> Result<(), Error> {
+        for plan in plans {
+            self.execute(plan)?;
+        }
+
+        Ok(())
+    }
+
     /// Carries out a plan.
     ///
     /// # Errors
@@ -270,6 +286,54 @@ mod tests {
             [Event::Data(
                 "https://adventofcode.com/2024/day/7".to_owned()
             )]
+        );
+    }
+
+    #[test]
+    fn execute_all_carries_out_plans_in_order() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let mut harness = Harness::new(root.path());
+        let project = root.path().join("2024").join("day07").join("rust");
+
+        harness
+            .app()
+            .execute_all(vec![
+                Plan::Path {
+                    project: project.clone(),
+                },
+                Plan::Url { puzzle: puzzle() },
+            ])
+            .expect("both plans should succeed");
+
+        assert_eq!(
+            harness.reporter.events,
+            [
+                Event::Data(project.to_string_lossy().into_owned()),
+                Event::Data("https://adventofcode.com/2024/day/7".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn execute_all_stops_at_the_first_failure() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let mut harness = Harness::new(root.path());
+        let project = root.path().join("2024").join("day07").join("rust");
+
+        let error = harness
+            .app()
+            .execute_all(vec![
+                Plan::Code {
+                    project: project.clone(),
+                },
+                Plan::Path { project },
+            ])
+            .expect_err("the project does not exist");
+
+        assert!(matches!(error, Error::ProjectMissing { .. }), "{error:?}");
+        assert!(
+            harness.reporter.events.is_empty(),
+            "the plan after a failure must not run"
         );
     }
 

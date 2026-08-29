@@ -1,7 +1,8 @@
 //! The engine behind the `aoc` command line tool.
 //!
 //! The binary is a thin shell around this library: it parses arguments, loads
-//! configuration and hands a [`resolve::Plan`] to [`app::App`]. Everything that
+//! configuration and hands the [`resolve::Plan`]s to [`app::App`], which
+//! carries them out in order. Everything that
 //! touches the outside world - the clock, child processes, the Advent of Code
 //! API and the terminal - sits behind a trait, so the interesting logic is
 //! exercised in tests without a network, a toolchain or a wall clock.
@@ -17,7 +18,7 @@
 //! let cli = Cli::parse();
 //! let env = Env::capture(cli.config.as_deref())?;
 //! let (config, _warnings) = Config::load(&env)?;
-//! let plan = resolve::plan(&cli, &config, &env.cwd, &SystemClock)?;
+//! let plans = resolve::plan(&cli, &config, &env.cwd, &SystemClock)?;
 //! let cache = FileCache::new(&env.state_dir);
 //! let inputs = InputStore::new(&env.state_dir);
 //!
@@ -29,7 +30,7 @@
 //!     inputs: &inputs,
 //!     reporter: &mut TermReporter,
 //! }
-//! .execute(plan)?;
+//! .execute_all(plans)?;
 //! # Ok::<(), aoc_runtime::error::Error>(())
 //! ```
 

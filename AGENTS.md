@@ -30,7 +30,7 @@ the MSRV declared as `rust-version` in `Cargo.toml` (1.88) — avoid APIs newer 
 One pass, no hidden state:
 
 ```
-Cli (clap)  ──►  Env::capture  ──►  Config::load  ──►  resolve::plan  ──►  Plan  ──►  App::execute
+Cli (clap)  ──►  Env::capture  ──►  Config::load  ──►  resolve::plan  ──►  Vec<Plan>  ──►  App::execute_all
 src/cli.rs      src/env.rs          src/config.rs      src/resolve.rs            src/app{,/init,/run}.rs
 ```
 
@@ -38,12 +38,15 @@ src/cli.rs      src/env.rs          src/config.rs      src/resolve.rs           
   or config.
 * **`env.rs`** is the *only* place the library reads process environment variables or the current
   directory. `Clock` is the only source of today's date.
-* **`resolve.rs`** is pure: `(Cli, Config, cwd, Clock) -> Plan`. Precedence for year/day/language is
-  explicit argument → recovered from the cwd via the template → date-based default. Each `Plan`
-  variant carries exactly what its handler needs, so a mode that requires a language cannot be
-  constructed without one and no downstream code re-checks.
+* **`resolve.rs`** is pure: `(Cli, Config, cwd, Clock) -> Vec<Plan>`, one plan per mode on the
+  command line, in the order given. Precedence for year/day/language is explicit argument →
+  recovered from the cwd via the template → date-based default, and the puzzle and project path are
+  shared by every mode. Each `Plan` variant carries exactly what its handler needs, so a mode that
+  requires a language cannot be constructed without one and no downstream code re-checks;
+  resolution is all-or-nothing, so a mode that cannot be planned fails before any mode executes.
 * **`app.rs`** holds every injected dependency (`CommandRunner`, `AocClient`, `AnswerCache`,
-  `InputStore`, `Reporter`) and dispatches on `Plan`. `app/run.rs` and `app/init.rs` are the two
+  `InputStore`, `Reporter`). `App::execute_all` walks the plans in order and stops at the first
+  failure; `execute` dispatches one of them on `Plan`. `app/run.rs` and `app/init.rs` are the two
   real handlers.
 
 ### Everything external sits behind a trait

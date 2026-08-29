@@ -18,7 +18,8 @@ use std::{fmt, path::PathBuf};
     name = "aoc",
     version,
     about,
-    after_help = "Unspecified values are recovered from the current directory using the \
+    after_help = "Several modes run in the order given, stopping at the first failure.\n\n\
+                  Unspecified values are recovered from the current directory using the \
                   configured path template, then fall back to today's puzzle."
 )]
 pub struct Cli {
@@ -34,9 +35,9 @@ pub struct Cli {
     #[arg(short, long)]
     pub language: Option<Language>,
 
-    /// What to do with the puzzle
-    #[arg(value_enum, default_value_t = Mode::Run)]
-    pub mode: Mode,
+    /// What to do with the puzzle, in the order given
+    #[arg(value_enum, value_name = "MODE", default_values_t = vec![Mode::Run])]
+    pub modes: Vec<Mode>,
 
     /// Run the solution without submitting its answers
     #[arg(long)]
@@ -112,10 +113,10 @@ mod tests {
     }
 
     #[test]
-    fn mode_defaults_to_run() {
+    fn the_mode_defaults_to_run() {
         let cli = Cli::try_parse_from(["aoc"]).expect("no arguments is valid");
 
-        assert_eq!(cli.mode, Mode::Run);
+        assert_eq!(cli.modes, [Mode::Run]);
         assert_eq!(cli.year, None);
         assert_eq!(cli.day, None);
         assert_eq!(cli.language, None);
@@ -127,7 +128,7 @@ mod tests {
     fn accepts_every_mode_positionally() {
         for mode in [Mode::Run, Mode::Init, Mode::Path, Mode::Code, Mode::Url] {
             let cli = Cli::try_parse_from(["aoc", mode.name()]).expect("mode should parse");
-            assert_eq!(cli.mode, mode);
+            assert_eq!(cli.modes, [mode]);
         }
     }
 
@@ -150,10 +151,33 @@ mod tests {
         assert_eq!(short.year, Some(2024));
         assert_eq!(short.day, Some(7));
         assert_eq!(short.language, Some(Language::CSharp));
-        assert_eq!(short.mode, Mode::Path);
+        assert_eq!(short.modes, [Mode::Path]);
         assert_eq!(long.year, short.year);
         assert_eq!(long.day, short.day);
         assert_eq!(long.language, short.language);
+    }
+
+    #[test]
+    fn several_modes_parse_in_the_order_given() {
+        let cli = Cli::try_parse_from(["aoc", "init", "code"]).expect("two modes should parse");
+
+        assert_eq!(cli.modes, [Mode::Init, Mode::Code]);
+    }
+
+    #[test]
+    fn flags_may_sit_between_modes() {
+        let cli = Cli::try_parse_from(["aoc", "init", "-y", "2024", "path"])
+            .expect("a flag between modes should parse");
+
+        assert_eq!(cli.modes, [Mode::Init, Mode::Path]);
+        assert_eq!(cli.year, Some(2024));
+    }
+
+    #[test]
+    fn a_mode_may_repeat() {
+        let cli = Cli::try_parse_from(["aoc", "run", "run"]).expect("a repeated mode should parse");
+
+        assert_eq!(cli.modes, [Mode::Run, Mode::Run]);
     }
 
     #[test]

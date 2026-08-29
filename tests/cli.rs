@@ -20,7 +20,7 @@ fn help_works_without_a_config_file() {
     // Clap names the binary as the operating system does, and Windows keeps the
     // `.exe`.
     let usage = format!(
-        "Usage: aoc{} [OPTIONS] [MODE]",
+        "Usage: aoc{} [OPTIONS] [MODE]...",
         std::env::consts::EXE_SUFFIX
     );
 
@@ -211,6 +211,35 @@ fn init_refuses_to_overwrite_an_existing_project() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("project already exists"));
+}
+
+#[test]
+fn several_modes_run_in_sequence() {
+    let fixture = Fixture::new();
+    let project = fixture.project("2024/day05/python");
+
+    fixture
+        .command()
+        .args(["init", "path", "-y", "2024", "-d", "5", "-l", "python"])
+        .assert()
+        .success()
+        .stdout(format!("{}\n", project.display()));
+
+    let entry = project.join("main.py");
+    assert!(entry.is_file(), "expected {} to exist", entry.display());
+}
+
+#[test]
+fn a_failing_mode_stops_the_ones_after_it() {
+    let fixture = Fixture::new();
+
+    fixture
+        .command()
+        .args(["code", "path", "-y", "2024", "-d", "5", "-l", "python"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("project does not exist"))
+        .stdout("");
 }
 
 #[test]

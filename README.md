@@ -97,7 +97,7 @@ The file is named after the language and carries no extension.
 ## Usage
 
 ```
-aoc [OPTIONS] [MODE]
+aoc [OPTIONS] [MODE]...
 ```
 
 | Mode | What it does |
@@ -118,6 +118,17 @@ aoc [OPTIONS] [MODE]
 | `-h, --help` / `-V, --version` | |
 
 Every mode except `url` needs a language.
+
+Several modes run one after another, in the order given:
+
+```console
+$ aoc init code          # scaffold the project, then open it in your editor
+$ aoc init run           # scaffold it, then build, run and submit
+```
+
+They share the same year, day and language, and nothing is carried from one to
+the next. If one fails the ones after it do not run, and a mode missing its
+language is caught before any of them starts.
 
 ### How values are resolved
 
