@@ -45,9 +45,9 @@ src/cli.rs      src/env.rs          src/config.rs      src/resolve.rs           
   requires a language cannot be constructed without one and no downstream code re-checks;
   resolution is all-or-nothing, so a mode that cannot be planned fails before any mode executes.
 * **`app.rs`** holds every injected dependency (`CommandRunner`, `AocClient`, `AnswerCache`,
-  `InputStore`, `Reporter`). `App::execute_all` walks the plans in order and stops at the first
-  failure; `execute` dispatches one of them on `Plan`. `app/run.rs` and `app/init.rs` are the two
-  real handlers.
+  `InputStore`, `Reporter`, `Confirm`). `App::execute_all` walks the plans in order and stops at
+  the first failure; `execute` dispatches one of them on `Plan`. `app/run.rs`, `app/init.rs` and
+  `app/clean.rs` are the three real handlers.
 
 ### Everything external sits behind a trait
 
@@ -61,6 +61,7 @@ toolchain or a real calendar.
 | `aoc::AocClient` | `aoc::live::LiveClient` | `aoc::fake::FakeClient` |
 | `aoc::cache::AnswerCache` | `FileCache` | `cache::memory::MemoryCache` |
 | `report::Reporter` | `TermReporter` | `report::recording::RecordingReporter` |
+| `report::Confirm` | `TermConfirm` | `report::scripted::ScriptedConfirm` |
 | `aoc::throttle::Timer` | `SystemTimer` | fake in that module's tests |
 
 Handlers emit semantic `report::Event`s rather than printing, so tests assert on what happened, not
@@ -112,6 +113,11 @@ directory — `run_fallback` hands the run back to the tool rather than guessing
 `cpp`), which have no output directory of their own — their `commands` arm must aim every output
 path at `layout.artifacts`.
 
+`BuildStore::clear` empties the whole tree; it is what a bare `aoc clean` does, and it is safe
+precisely because everything under it is regenerable. `InputStore` and `AnswerCache` grew the same
+`clear` for `clean --all`, and each store owns the removal of its own directory so nothing else
+repeats the `join("builds")`/`join("inputs")`/`join("answers")` literals.
+
 `rust` and `csharp` deliberately build inside the project, into the `target/` and `bin/` their own
 tooling owns. Redirecting them buys nothing: rust-analyzer and the C# language server build into
 those directories regardless, so the project would carry one anyway and the state directory a
@@ -148,6 +154,12 @@ and the README documents these guarantees to users. Treat them as invariants:
 * `aoc open` hands the puzzle URL to the OS link handler (`open::that`) and makes no request of
   its own, so it needs no throttle and does not widen the rule above. Keep it that way: it is the
   user's browser visiting the site, not the tool.
+* `aoc clean` never removes `throttle::LAST_REQUEST_FILE`. The stamp sits at the root of the state
+  directory rather than inside `builds/`, `inputs/` or `answers/`, so `app/clean.rs` preserves it
+  by construction — do not "tidy" that into removing the state directory wholesale. `clean --all`
+  does delete inputs, which is the one way the download-once rule is ever undone; that is why it
+  is the only thing in the tool that asks the user first (`report::Confirm`), and why it refuses
+  outright when there is no terminal to ask on and no `--yes`.
 * The cookie is never printed. `Config` and `App` both have hand-written `Debug` impls that report
   `has_cookie`/`has_client` instead of the value; do not derive `Debug` on anything that can hold
   the cookie.

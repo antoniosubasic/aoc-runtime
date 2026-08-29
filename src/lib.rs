@@ -11,7 +11,7 @@
 //! use aoc_runtime::{
 //!     app::App, build::BuildStore, cli::Cli, config::Config, env::{Env, SystemClock},
 //!     aoc::{cache::FileCache, input::InputStore},
-//!     process::SystemRunner, report::TermReporter, resolve,
+//!     process::SystemRunner, report::{TermConfirm, TermReporter}, resolve,
 //! };
 //! use clap::Parser as _;
 //!
@@ -31,6 +31,7 @@
 //!     inputs: &inputs,
 //!     builds: &builds,
 //!     reporter: &mut TermReporter,
+//!     confirm: &mut TermConfirm::new(cli.yes),
 //! }
 //! .execute_all(plans)?;
 //! # Ok::<(), aoc_runtime::error::Error>(())

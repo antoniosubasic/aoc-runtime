@@ -43,6 +43,14 @@ pub struct Cli {
     #[arg(long)]
     pub no_submit: bool,
 
+    /// Also remove downloaded inputs and cached answers (clean only)
+    #[arg(long)]
+    pub all: bool,
+
+    /// Do not ask for confirmation (clean only)
+    #[arg(long)]
+    pub yes: bool,
+
     /// Use this config file instead of the default location
     #[arg(long, value_name = "FILE")]
     pub config: Option<PathBuf>,
@@ -63,13 +71,15 @@ pub enum Mode {
     Url,
     /// Open the puzzle in your default browser.
     Open,
+    /// Remove build output, and with `--all` every cached input and answer.
+    Clean,
 }
 
 impl Mode {
     /// Whether this mode needs a language to identify a project.
     #[must_use]
     pub const fn needs_language(self) -> bool {
-        !matches!(self, Self::Url | Self::Open)
+        !matches!(self, Self::Url | Self::Open | Self::Clean)
     }
 
     /// The mode's lowercase name, as accepted on the command line.
@@ -82,6 +92,7 @@ impl Mode {
             Self::Code => "code",
             Self::Url => "url",
             Self::Open => "open",
+            Self::Clean => "clean",
         }
     }
 }
@@ -124,6 +135,8 @@ mod tests {
         assert_eq!(cli.day, None);
         assert_eq!(cli.language, None);
         assert!(!cli.no_submit);
+        assert!(!cli.all);
+        assert!(!cli.yes);
         assert_eq!(cli.config, None);
     }
 
@@ -136,6 +149,7 @@ mod tests {
             Mode::Code,
             Mode::Url,
             Mode::Open,
+            Mode::Clean,
         ] {
             let cli = Cli::try_parse_from(["aoc", mode.name()]).expect("mode should parse");
             assert_eq!(cli.modes, [mode]);
@@ -219,11 +233,25 @@ mod tests {
     }
 
     #[test]
-    fn url_and_open_work_without_a_language() {
+    fn url_open_and_clean_work_without_a_language() {
         assert!(!Mode::Url.needs_language());
         assert!(!Mode::Open.needs_language());
+        assert!(!Mode::Clean.needs_language());
         for mode in [Mode::Run, Mode::Init, Mode::Path, Mode::Code] {
             assert!(mode.needs_language(), "{mode}");
         }
+    }
+
+    #[test]
+    fn clean_takes_its_own_flags() {
+        let bare = Cli::try_parse_from(["aoc", "clean"]).expect("clean should parse");
+        let thorough = Cli::try_parse_from(["aoc", "clean", "--all", "--yes"])
+            .expect("clean flags should parse");
+
+        assert!(!bare.all);
+        assert!(!bare.yes);
+        assert!(thorough.all);
+        assert!(thorough.yes);
+        assert_eq!(thorough.modes, [Mode::Clean]);
     }
 }

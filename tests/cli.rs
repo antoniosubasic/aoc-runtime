@@ -35,6 +35,7 @@ fn help_works_without_a_config_file() {
         .stdout(predicate::str::contains("- path:"))
         .stdout(predicate::str::contains("- code:"))
         .stdout(predicate::str::contains("- url:"))
+        .stdout(predicate::str::contains("- clean:"))
         .stdout(predicate::str::contains("- open:"))
         .stdout(predicate::str::contains("Puzzle year"))
         .stdout(predicate::str::contains("Solution language"));
@@ -387,4 +388,95 @@ fn no_ansi_escapes_when_colour_is_disabled() {
         !stdout.contains('\u{1b}'),
         "unexpected escape in {stdout:?}"
     );
+}
+
+/// Fills the state directory with one of everything the tool caches, and
+/// returns the four paths in the order `clean` is allowed to touch them:
+/// builds, inputs, answers, and the request stamp that must always survive.
+fn seed_state(fixture: &Fixture) -> [std::path::PathBuf; 4] {
+    let state = fixture.state_dir();
+    let build = state.join("builds").join("2024-07").join("go");
+    let input = state.join("inputs").join("2024-07.txt");
+    let answer = state.join("answers").join("2024-07-part1");
+    let stamp = state.join("last-request");
+
+    fs::create_dir_all(&build).expect("create a build directory");
+    fs::create_dir_all(input.parent().expect("inputs directory")).expect("create inputs");
+    fs::create_dir_all(answer.parent().expect("answers directory")).expect("create answers");
+
+    fs::write(build.join("bin"), "a binary").expect("write a binary");
+    fs::write(&input, "1227\n").expect("write an input");
+    fs::write(&answer, "1227").expect("write an answer");
+    fs::write(&stamp, "99000000000000").expect("write the request stamp");
+
+    [build, input, answer, stamp]
+}
+
+#[test]
+fn clean_removes_build_output_and_needs_no_language() {
+    let fixture = Fixture::new();
+    let [build, input, answer, stamp] = seed_state(&fixture);
+
+    fixture.command().arg("clean").assert().success().stdout("");
+
+    assert!(!build.exists(), "build output survived");
+    assert!(input.is_file(), "the input was removed");
+    assert!(answer.is_file(), "the answer was removed");
+    assert!(stamp.is_file(), "the request stamp was removed");
+}
+
+#[test]
+fn clean_all_is_refused_when_there_is_nobody_to_confirm_with() {
+    let fixture = Fixture::new();
+    let [build, input, answer, stamp] = seed_state(&fixture);
+
+    // Standard input is not a terminal here, so the binary cannot ask.
+    fixture
+        .command()
+        .args(["clean", "--all"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--yes"));
+
+    assert!(build.exists(), "a refused clean removed build output");
+    assert!(input.is_file(), "a refused clean removed the input");
+    assert!(answer.is_file(), "a refused clean removed the answer");
+    assert!(stamp.is_file(), "the request stamp was removed");
+}
+
+#[test]
+fn clean_all_keeps_the_request_stamp() {
+    let fixture = Fixture::new();
+    let [build, input, answer, stamp] = seed_state(&fixture);
+
+    fixture
+        .command()
+        .args(["clean", "--all", "--yes"])
+        .assert()
+        .success()
+        .stdout("");
+
+    assert!(!build.exists(), "build output survived");
+    assert!(!input.exists(), "the input survived");
+    assert!(!answer.exists(), "the answer survived");
+    assert!(
+        stamp.is_file(),
+        "the request stamp must outlive even a full clean"
+    );
+}
+
+#[test]
+fn clean_composes_with_other_modes() {
+    let fixture = Fixture::new();
+    let [build, ..] = seed_state(&fixture);
+    let project = fixture.project("2024/day05/python");
+
+    fixture
+        .command()
+        .args(["clean", "path", "-y", "2024", "-d", "5", "-l", "python"])
+        .assert()
+        .success()
+        .stdout(format!("{}\n", project.display()));
+
+    assert!(!build.exists(), "build output survived");
 }

@@ -5,6 +5,7 @@
 //! Every outside dependency is injected, so each handler can be driven end to
 //! end in a test with a fake runner, a fake client and a temporary directory.
 
+mod clean;
 mod init;
 mod run;
 
@@ -15,7 +16,7 @@ use crate::{
     error::Error,
     process::{CommandRunner, CommandSpec},
     puzzle::Puzzle,
-    report::Reporter,
+    report::{Confirm, Reporter},
     resolve::Plan,
 };
 use std::path::Path;
@@ -42,6 +43,8 @@ pub struct App<'a> {
     pub builds: &'a BuildStore,
     /// Where output goes.
     pub reporter: &'a mut dyn Reporter,
+    /// How the user is asked to approve something irreversible.
+    pub confirm: &'a mut dyn Confirm,
 }
 
 impl std::fmt::Debug for App<'_> {
@@ -96,6 +99,7 @@ impl App<'_> {
                 Ok(())
             }
             Plan::Open { puzzle } => open_in_browser(&puzzle.url()),
+            Plan::Clean { all } => self.clean(all),
         }
     }
 
@@ -177,7 +181,7 @@ pub(crate) mod testing {
         config::Config,
         env::Env,
         process::fake::FakeRunner,
-        report::recording::RecordingReporter,
+        report::{recording::RecordingReporter, scripted::ScriptedConfirm},
     };
     use std::path::Path;
 
@@ -189,6 +193,7 @@ pub(crate) mod testing {
         pub(crate) inputs: InputStore,
         pub(crate) builds: BuildStore,
         pub(crate) reporter: RecordingReporter,
+        pub(crate) confirm: ScriptedConfirm,
     }
 
     impl Harness {
@@ -201,6 +206,9 @@ pub(crate) mod testing {
                 inputs: InputStore::new(root.join("state")),
                 builds: BuildStore::new(root.join("state")),
                 reporter: RecordingReporter::new(),
+                // Nobody to ask unless a test says otherwise, so an
+                // unexpected prompt fails loudly instead of being approved.
+                confirm: ScriptedConfirm::unattended(),
             }
         }
 
@@ -214,6 +222,11 @@ pub(crate) mod testing {
             self
         }
 
+        pub(crate) fn with_confirm(mut self, confirm: ScriptedConfirm) -> Self {
+            self.confirm = confirm;
+            self
+        }
+
         pub(crate) fn app(&mut self) -> App<'_> {
             App {
                 config: &self.config,
@@ -223,6 +236,7 @@ pub(crate) mod testing {
                 inputs: &self.inputs,
                 builds: &self.builds,
                 reporter: &mut self.reporter,
+                confirm: &mut self.confirm,
             }
         }
     }

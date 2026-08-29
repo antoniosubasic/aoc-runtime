@@ -6,8 +6,15 @@
 //! Directories are named after the puzzle exactly as
 //! [`InputStore`](crate::aoc::input::InputStore) names inputs.
 
-use crate::{language::Language, puzzle::Puzzle};
-use std::path::{Path, PathBuf};
+use crate::{
+    error::{Error, IoResultExt as _},
+    language::Language,
+    puzzle::Puzzle,
+};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 /// The single file a directly compiled language builds to.
 pub const BINARY_NAME: &str = "bin";
@@ -35,6 +42,21 @@ impl BuildStore {
     #[must_use]
     pub fn dir(&self, puzzle: Puzzle, language: Language) -> PathBuf {
         self.root.join(puzzle.slug()).join(language.name())
+    }
+
+    /// Removes every build, for every puzzle and language.
+    ///
+    /// Nothing here is precious: the next `aoc run` compiles what it needs
+    /// again.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Io`] if the directory exists and cannot be removed.
+    pub fn clear(&self) -> Result<(), Error> {
+        match fs::remove_dir_all(&self.root) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            result => result.io_context("remove build output", &self.root),
+        }
     }
 }
 
@@ -100,6 +122,32 @@ mod tests {
                 .expect("a build directory sits under its puzzle"),
             stem
         );
+    }
+
+    #[test]
+    fn clearing_removes_every_build() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let builds = BuildStore::new(dir.path());
+        let build = builds.dir(puzzle(), Language::Rust);
+        std::fs::create_dir_all(&build).expect("create a build directory");
+
+        builds.clear().expect("clearing should succeed");
+
+        assert!(!build.exists(), "the build survived");
+        assert!(!dir.path().join("builds").exists(), "the root survived");
+        assert!(
+            dir.path().exists(),
+            "the state directory itself must remain"
+        );
+    }
+
+    #[test]
+    fn clearing_a_store_that_was_never_used_is_not_an_error() {
+        let dir = tempfile::tempdir().expect("temp dir");
+
+        BuildStore::new(dir.path())
+            .clear()
+            .expect("nothing to remove is not a failure");
     }
 
     #[test]

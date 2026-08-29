@@ -1,12 +1,13 @@
-//! User-facing output.
+//! User-facing output, and the one question the tool asks back.
 //!
 //! Data goes to standard output so `cd $(aoc path)` works; diagnostics go to
 //! standard error. Handlers emit semantic [`Event`]s, so tests assert on what
-//! happened rather than on ANSI escape sequences.
+//! happened rather than on ANSI escape sequences. A confirmation is not an
+//! event - it needs an answer - so [`Confirm`] is its own seam.
 
-use crate::{aoc::Verdict, puzzle::Part};
+use crate::{aoc::Verdict, error::Error, puzzle::Part};
 use colored::Colorize as _;
-use std::io::{self, Write as _};
+use std::io::{self, BufRead as _, IsTerminal as _, Write as _};
 
 /// Something worth telling the user about.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,6 +100,62 @@ impl Reporter for TermReporter {
     }
 }
 
+/// Asks the user to approve something irreversible.
+pub trait Confirm {
+    /// Asks `question` and reports whether the user approved.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ConfirmationRequired`] if there is nobody to ask.
+    fn confirm(&mut self, question: &str) -> Result<bool, Error>;
+}
+
+/// Asks on the terminal, unless the answer was already given on the command
+/// line.
+///
+/// Refusing when standard input is not a terminal is the point: a destructive
+/// command that cannot ask must not assume the answer it wants.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct TermConfirm {
+    assume_yes: bool,
+}
+
+impl TermConfirm {
+    /// Creates a prompt, answering itself when `assume_yes` is set.
+    #[must_use]
+    pub const fn new(assume_yes: bool) -> Self {
+        Self { assume_yes }
+    }
+}
+
+impl Confirm for TermConfirm {
+    fn confirm(&mut self, question: &str) -> Result<bool, Error> {
+        if self.assume_yes {
+            return Ok(true);
+        }
+
+        let stdin = io::stdin();
+        if !stdin.is_terminal() {
+            return Err(Error::ConfirmationRequired);
+        }
+
+        // The question shares standard error with the warnings, leaving stdout
+        // to the data a caller might be capturing.
+        eprint!("{question} [y/N] ");
+        let _ = io::stderr().flush();
+
+        let mut answer = String::new();
+        if stdin.lock().read_line(&mut answer).is_err() {
+            return Ok(false);
+        }
+
+        Ok(matches!(
+            answer.trim().to_ascii_lowercase().as_str(),
+            "y" | "yes"
+        ))
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod recording {
     use super::{Event, Reporter};
@@ -150,8 +207,50 @@ pub(crate) mod recording {
 }
 
 #[cfg(test)]
+pub(crate) mod scripted {
+    use super::Confirm;
+    use crate::error::Error;
+
+    /// A prompt with its answer decided in advance.
+    #[derive(Debug)]
+    pub(crate) struct ScriptedConfirm {
+        reply: Option<bool>,
+        pub(crate) questions: Vec<String>,
+    }
+
+    impl ScriptedConfirm {
+        pub(crate) const fn approving() -> Self {
+            Self::answering(Some(true))
+        }
+
+        pub(crate) const fn declining() -> Self {
+            Self::answering(Some(false))
+        }
+
+        /// Nobody is there to answer, as when standard input is not a terminal.
+        pub(crate) const fn unattended() -> Self {
+            Self::answering(None)
+        }
+
+        const fn answering(reply: Option<bool>) -> Self {
+            Self {
+                reply,
+                questions: Vec::new(),
+            }
+        }
+    }
+
+    impl Confirm for ScriptedConfirm {
+        fn confirm(&mut self, question: &str) -> Result<bool, Error> {
+            self.questions.push(question.to_owned());
+            self.reply.ok_or(Error::ConfirmationRequired)
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
-    use super::{recording::RecordingReporter, *};
+    use super::{recording::RecordingReporter, scripted::ScriptedConfirm, *};
 
     #[test]
     fn records_every_kind_of_event() {
@@ -177,5 +276,38 @@ mod tests {
                 verdict: Some(Verdict::Correct),
             }
         );
+    }
+
+    #[test]
+    fn an_answer_given_on_the_command_line_is_not_asked_for() {
+        let mut confirm = TermConfirm::new(true);
+
+        assert!(
+            confirm
+                .confirm("remove everything?")
+                .expect("--yes answers itself")
+        );
+    }
+
+    #[test]
+    fn a_prompt_with_nobody_to_answer_it_fails() {
+        // Standard input is not a terminal under the test harness, and no
+        // `--yes` was given, so there is no answer to be had.
+        let mut confirm = TermConfirm::new(false);
+
+        let error = confirm
+            .confirm("remove everything?")
+            .expect_err("nobody can answer");
+
+        assert!(matches!(error, Error::ConfirmationRequired), "{error:?}");
+        assert!(error.to_string().contains("--yes"), "{error}");
+    }
+
+    #[test]
+    fn a_scripted_prompt_records_what_it_was_asked() {
+        let mut confirm = ScriptedConfirm::declining();
+
+        assert!(!confirm.confirm("remove everything?").expect("an answer"));
+        assert_eq!(confirm.questions, ["remove everything?"]);
     }
 }

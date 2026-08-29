@@ -114,6 +114,7 @@ aoc [OPTIONS] [MODE]...
 | `code` | Open the project directory in your editor |
 | `url` | Print the puzzle URL |
 | `open` | Open the puzzle in your default browser |
+| `clean` | Remove build output from the state directory |
 
 | Option | Description |
 | --- | --- |
@@ -121,10 +122,12 @@ aoc [OPTIONS] [MODE]...
 | `-d, --day <DAY>` | Puzzle day, `1`–`25` (`1`–`12` from 2025 on). Defaults to today during December, otherwise `1`. |
 | `-l, --language <LANGUAGE>` | `rust`, `csharp`, `java`, `python`, `javascript`, `go`, `c`, `cpp`, `ruby` or `bash`. |
 | `--no-submit` | Run the solution but do not submit its answers. |
+| `--all` | `clean` only: also remove downloaded inputs and cached answers. |
+| `--yes` | `clean --all` only: do not ask for confirmation. |
 | `--config <FILE>` | Use a specific config file. |
 | `-h, --help` / `-V, --version` | |
 
-Neither `url` nor `open` needs a language.
+Neither `url`, `open` nor `clean` needs a language.
 
 Several modes run one after another, in the order given:
 
@@ -137,6 +140,29 @@ $ aoc open init code     # read the puzzle, scaffold it, open your editor
 They share the same year, day and language, and nothing is carried from one to
 the next. If one fails the ones after it do not run, and a mode missing its
 language is caught before any of them starts.
+
+### Cleaning up
+
+`aoc clean` empties the state directory. On its own it removes build output,
+which is free to throw away because the next `aoc run` compiles it again:
+
+```console
+$ aoc clean              # remove every build
+$ aoc clean --all        # also remove downloaded inputs and cached answers
+```
+
+`--all` is a bigger deal than it looks. Deleting an input means downloading it
+again, and deleting an accepted answer means submitting it again, so `aoc` asks
+before doing either. Pass `--yes` to answer in advance; without a terminal to
+ask on and without `--yes`, `aoc clean --all` refuses rather than guessing.
+
+Two things it will never remove:
+
+* the record of when the last request was made, so the five second gap between
+  requests keeps holding across invocations;
+* anything outside its own state directory. `rust` and `csharp` build inside
+  the project, into the `target/` and `bin/` their own tooling owns, so those
+  are `cargo clean` and `dotnet clean`'s business, not `aoc`'s.
 
 ### How values are resolved
 

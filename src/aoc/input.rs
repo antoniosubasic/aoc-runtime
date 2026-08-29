@@ -42,6 +42,31 @@ impl InputStore {
         self.path(puzzle).is_file()
     }
 
+    /// How many inputs are stored.
+    ///
+    /// Best effort, like the rest of the store's reads: a directory that
+    /// cannot be listed counts as empty.
+    #[must_use]
+    pub fn count(&self) -> usize {
+        fs::read_dir(&self.root).map_or(0, |entries| entries.flatten().count())
+    }
+
+    /// Removes every stored input.
+    ///
+    /// Unlike everything else in the state directory this cannot be
+    /// regenerated for free - each input costs another request to the site -
+    /// so only an explicit instruction from the user should reach here.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Io`] if the directory exists and cannot be removed.
+    pub fn clear(&self) -> Result<(), Error> {
+        match fs::remove_dir_all(&self.root) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            result => result.io_context("remove cached inputs", &self.root),
+        }
+    }
+
     /// Writes a freshly downloaded input to the store.
     ///
     /// # Errors
@@ -251,5 +276,38 @@ mod tests {
             .expect_err("the state directory cannot be written to");
 
         assert!(matches!(error, Error::Io { .. }), "{error:?}");
+    }
+
+    #[test]
+    fn clearing_removes_every_stored_input() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let inputs = InputStore::new(dir.path());
+        inputs.store(puzzle(), "1227\n").expect("store the input");
+
+        assert_eq!(inputs.count(), 1);
+        inputs.clear().expect("clearing should succeed");
+
+        assert_eq!(inputs.count(), 0);
+        assert!(!inputs.holds(puzzle()), "the input survived");
+        assert!(
+            dir.path().exists(),
+            "the state directory itself must remain"
+        );
+    }
+
+    #[test]
+    fn clearing_a_store_that_was_never_used_is_not_an_error() {
+        let dir = tempfile::tempdir().expect("temp dir");
+
+        InputStore::new(dir.path())
+            .clear()
+            .expect("nothing to remove is not a failure");
+    }
+
+    #[test]
+    fn an_empty_store_counts_nothing() {
+        let dir = tempfile::tempdir().expect("temp dir");
+
+        assert_eq!(InputStore::new(dir.path()).count(), 0);
     }
 }

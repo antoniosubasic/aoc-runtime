@@ -5,8 +5,11 @@
 //! Caching is strictly best effort: a failure to read or write never fails a
 //! run.
 
-use crate::puzzle::{Part, Puzzle};
-use std::{fs, path::PathBuf};
+use crate::{
+    error::{Error, IoResultExt as _},
+    puzzle::{Part, Puzzle},
+};
+use std::{fs, io, path::PathBuf};
 
 /// Stores answers known to be correct.
 pub trait AnswerCache {
@@ -15,6 +18,17 @@ pub trait AnswerCache {
 
     /// Records an accepted answer. Failures are silently ignored.
     fn record(&self, puzzle: Puzzle, part: Part, answer: &str);
+
+    /// Forgets every accepted answer.
+    ///
+    /// Unlike [`AnswerCache::record`] this is fallible: it happens only
+    /// because the user asked for it, so a failure to forget must be visible
+    /// rather than swallowed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Io`] if the stored answers cannot be removed.
+    fn clear(&self) -> Result<(), Error>;
 }
 
 /// A cache backed by one small file per answer.
@@ -56,11 +70,18 @@ impl AnswerCache for FileCache {
             let _ = fs::write(path, answer);
         }
     }
+
+    fn clear(&self) -> Result<(), Error> {
+        match fs::remove_dir_all(&self.root) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            result => result.io_context("remove cached answers", &self.root),
+        }
+    }
 }
 
 #[cfg(test)]
 pub(crate) mod memory {
-    use super::{AnswerCache, Part, Puzzle};
+    use super::{AnswerCache, Error, Part, Puzzle};
     use std::cell::RefCell;
     use std::collections::HashMap;
 
@@ -90,6 +111,11 @@ pub(crate) mod memory {
             self.entries
                 .borrow_mut()
                 .insert((puzzle, part), answer.to_owned());
+        }
+
+        fn clear(&self) -> Result<(), Error> {
+            self.entries.borrow_mut().clear();
+            Ok(())
         }
     }
 }
@@ -151,6 +177,39 @@ mod tests {
         let cache = FileCache::new(&blocked);
 
         cache.record(puzzle(), Part::One, "1227");
+        assert_eq!(cache.correct(puzzle(), Part::One), None);
+    }
+
+    #[test]
+    fn clearing_forgets_every_answer() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let cache = FileCache::new(dir.path());
+        cache.record(puzzle(), Part::One, "1227");
+
+        cache.clear().expect("clearing should succeed");
+
+        assert_eq!(cache.correct(puzzle(), Part::One), None);
+        assert!(
+            dir.path().exists(),
+            "the state directory itself must remain"
+        );
+    }
+
+    #[test]
+    fn clearing_a_cache_that_was_never_written_to_is_not_an_error() {
+        let dir = tempfile::tempdir().expect("temp dir");
+
+        FileCache::new(dir.path())
+            .clear()
+            .expect("nothing to remove is not a failure");
+    }
+
+    #[test]
+    fn the_in_memory_cache_forgets_too() {
+        let cache = memory::MemoryCache::seeded(puzzle(), Part::One, "1227");
+
+        cache.clear().expect("clearing should succeed");
+
         assert_eq!(cache.correct(puzzle(), Part::One), None);
     }
 }

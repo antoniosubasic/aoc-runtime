@@ -45,6 +45,13 @@ pub enum Error {
         path: PathBuf,
     },
 
+    /// A destructive action needed confirmation and there was nobody to ask.
+    #[error(
+        "refusing to remove puzzle inputs and cached answers without confirmation\n\n\
+         pass --yes to confirm"
+    )]
+    ConfirmationRequired,
+
     /// The puzzle URL could not be handed to a browser.
     #[error("failed to open {url} in a browser")]
     Browser {

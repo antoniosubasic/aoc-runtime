@@ -31,7 +31,12 @@ use std::{
 pub const MIN_INTERVAL: Duration = Duration::from_secs(5);
 
 /// The file, inside the state directory, holding the last request's timestamp.
-const LAST_REQUEST_FILE: &str = "last-request";
+/// The file holding the time of the last request, sitting at the root of the
+/// state directory rather than inside any of the caches.
+///
+/// Nothing may remove it: the gap it records is what makes the throttle hold
+/// between one invocation and the next.
+pub const LAST_REQUEST_FILE: &str = "last-request";
 
 /// Wall-clock time, and the ability to wait for some of it.
 ///

@@ -60,6 +60,12 @@ pub enum Plan {
         /// The puzzle to open.
         puzzle: Puzzle,
     },
+    /// Empty the state directory.
+    Clean {
+        /// Whether cached inputs and answers go too, rather than build output
+        /// alone.
+        all: bool,
+    },
 }
 
 /// Resolves arguments, the working directory and the clock into one [`Plan`]
@@ -119,6 +125,7 @@ pub fn plan(
             Ok(match mode {
                 Mode::Url => Plan::Url { puzzle },
                 Mode::Open => Plan::Open { puzzle },
+                Mode::Clean => Plan::Clean { all: cli.all },
                 Mode::Run => {
                     let (language, project) = with_project()?;
                     Plan::Run {
@@ -258,7 +265,7 @@ mod tests {
             | Plan::Init { puzzle, .. }
             | Plan::Url { puzzle }
             | Plan::Open { puzzle } => Some(*puzzle),
-            Plan::Path { .. } | Plan::Code { .. } => None,
+            Plan::Path { .. } | Plan::Code { .. } | Plan::Clean { .. } => None,
         }
     }
 
@@ -268,7 +275,7 @@ mod tests {
             | Plan::Init { project, .. }
             | Plan::Path { project }
             | Plan::Code { project } => Some(project),
-            Plan::Url { .. } | Plan::Open { .. } => None,
+            Plan::Url { .. } | Plan::Open { .. } | Plan::Clean { .. } => None,
         }
     }
 
@@ -425,6 +432,22 @@ mod tests {
     }
 
     #[test]
+    fn clean_needs_no_language() {
+        let plan =
+            resolve_one(&["clean"], "/elsewhere", date(2024, 12, 5)).expect("plan should resolve");
+
+        assert_eq!(plan, Plan::Clean { all: false });
+    }
+
+    #[test]
+    fn clean_carries_the_all_flag() {
+        let plan = resolve_one(&["clean", "--all"], "/elsewhere", date(2024, 12, 5))
+            .expect("plan should resolve");
+
+        assert_eq!(plan, Plan::Clean { all: true });
+    }
+
+    #[test]
     fn other_modes_require_a_language() {
         for mode in ["run", "init", "path", "code"] {
             let error = resolve_one(&[mode], "/elsewhere", date(2024, 12, 5))
@@ -460,7 +483,7 @@ mod tests {
     #[test]
     fn every_mode_gets_a_plan_in_the_order_given() {
         let plans = resolve_all(
-            &["init", "code", "url", "open"],
+            &["init", "code", "url", "open", "clean"],
             "/root/2024/day07/rust",
             date(2024, 12, 7),
         )
@@ -473,7 +496,8 @@ mod tests {
                     Plan::Init { .. },
                     Plan::Code { .. },
                     Plan::Url { .. },
-                    Plan::Open { .. }
+                    Plan::Open { .. },
+                    Plan::Clean { .. }
                 ]
             ),
             "{plans:?}"
@@ -519,6 +543,10 @@ mod tests {
         assert!(matches!(
             resolve_one(&["open"], cwd, today),
             Ok(Plan::Open { .. })
+        ));
+        assert!(matches!(
+            resolve_one(&["clean"], cwd, today),
+            Ok(Plan::Clean { .. })
         ));
     }
 }

@@ -57,6 +57,12 @@ impl Fixture {
         self.path.join("config")
     }
 
+    /// The state directory the binary will use, matching the `XDG_STATE_HOME`
+    /// set in [`Fixture::command_in`].
+    pub(crate) fn state_dir(&self) -> PathBuf {
+        self.path.join("state").join("aoc")
+    }
+
     pub(crate) fn solutions(&self) -> PathBuf {
         self.path.join("aoc")
     }

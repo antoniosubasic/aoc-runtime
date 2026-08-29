@@ -9,7 +9,7 @@ use aoc_runtime::{
     env::{Env, SystemClock},
     error::{self, Error},
     process::SystemRunner,
-    report::{Reporter, TermReporter},
+    report::{Reporter, TermConfirm, TermReporter},
     resolve,
 };
 use clap::Parser;
@@ -46,6 +46,7 @@ fn run(cli: &Cli) -> Result<(), Error> {
     let cache = FileCache::new(&env.state_dir);
     let inputs = InputStore::new(&env.state_dir);
     let builds = BuildStore::new(&env.state_dir);
+    let mut confirm = TermConfirm::new(cli.yes);
 
     let mut app = App {
         config: &config,
@@ -55,6 +56,7 @@ fn run(cli: &Cli) -> Result<(), Error> {
         inputs: &inputs,
         builds: &builds,
         reporter: &mut reporter,
+        confirm: &mut confirm,
     };
 
     app.execute_all(plans)
