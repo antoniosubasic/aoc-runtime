@@ -75,6 +75,9 @@ on ANSI escapes. Keep `Event::Data` (paths, URLs) on stdout and everything else 
 ### Templates work in both directions
 
 `template.rs` parses `~/projects/aoc/{{year}}/day{{pad day}}/{{language}}` once into `Segment`s.
+`config.rs` refuses a `template_path` that is not absolute once `~` is expanded: a solution runs
+with its project as the working directory, so a relative template would be read against the very
+path it just rendered, and its matcher would never match an absolute cwd either.
 The same segments are **rendered** into a project path and **compiled** (`template/matcher.rs`) into
 a regex that recovers year/day/language *from* the cwd. Everything after each placeholder is wrapped
 in an optional group, so standing partway along the path still recovers what precedes it. Detection

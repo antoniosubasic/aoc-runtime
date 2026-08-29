@@ -278,6 +278,20 @@ fn invalid_arguments_are_usage_errors() {
 }
 
 #[test]
+fn a_relative_template_is_reported_against_the_config_file() {
+    let fixture = Fixture::new();
+    fixture.write_config("template_path: \"aoc/{{year}}/day{{pad day}}/{{language}}\"\n");
+
+    fixture
+        .command()
+        .args(["url", "-y", "2024", "-d", "5"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("is relative"))
+        .stderr(predicate::str::contains("must be absolute"));
+}
+
+#[test]
 fn an_invalid_template_is_reported_against_the_config_file() {
     let fixture = Fixture::new();
     fixture.write_config("template_path: \"/aoc/{{year}}/{{month}}\"\n");

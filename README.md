@@ -46,7 +46,7 @@ editor: "code"
 
 | Key | Required | Default | Meaning |
 | --- | --- | --- | --- |
-| `template_path` | yes | | Path template for a solution directory. A leading `~` is expanded. |
+| `template_path` | yes | | Path template for a solution directory. A leading `~` is expanded; the result must be absolute. |
 | `cookie` | no | none | Session cookie, or a `COOKIE` file beside this one. Without it, `aoc` never contacts adventofcode.com. |
 | `editor` | no | `code` | Command run by `aoc code`. |
 

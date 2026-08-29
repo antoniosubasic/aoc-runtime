@@ -86,7 +86,7 @@ impl Config {
     /// # Errors
     ///
     /// Returns [`ConfigError`] if the file is missing, unreadable, not valid
-    /// YAML, or contains an invalid `template_path`.
+    /// YAML, or contains a relative or otherwise invalid `template_path`.
     pub fn load(env: &Env) -> Result<(Self, Vec<Warning>), ConfigError> {
         let contents = read_config(&env.config_file)?;
         let (mut config, mut warnings) = Self::from_yaml(&contents, env)?;
@@ -104,8 +104,8 @@ impl Config {
     ///
     /// # Errors
     ///
-    /// Returns [`ConfigError`] if the document is not valid YAML or the
-    /// `template_path` is not a valid template.
+    /// Returns [`ConfigError`] if the document is not valid YAML, or the
+    /// `template_path` is relative or not a valid template.
     pub fn from_yaml(contents: &str, env: &Env) -> Result<(Self, Vec<Warning>), ConfigError> {
         let raw: RawConfig =
             serde_yaml_ng::from_str(contents).map_err(|source| ConfigError::Parse {
@@ -122,6 +122,17 @@ impl Config {
         }
 
         let template_path = expand_home(&raw.template_path, &env.home);
+        // Everything a solution does happens with the project as the working
+        // directory, so a relative template would be resolved against the
+        // project it just named - and would never match the working directory
+        // it is supposed to recover a puzzle from either.
+        if !Path::new(&template_path).is_absolute() {
+            return Err(ConfigError::RelativeTemplate {
+                path: env.config_file.clone(),
+                template: raw.template_path,
+            });
+        }
+
         let template = Template::parse(&template_path).map_err(|source| ConfigError::Template {
             path: env.config_file.clone(),
             source,
@@ -223,6 +234,19 @@ pub enum ConfigError {
         #[source]
         source: serde_yaml_ng::Error,
     },
+    /// The `template_path` does not start at the root of the filesystem.
+    #[error(
+        "`template_path` in {path} is relative: `{template}`\n\n\
+         it must be absolute - start it with `~/` or `/` - because a solution \
+         runs with its project as the working directory, and a relative \
+         template would be read against whichever directory that happens to be"
+    )]
+    RelativeTemplate {
+        /// The offending file.
+        path: PathBuf,
+        /// The template as it was written, before `~` was expanded.
+        template: String,
+    },
     /// The `template_path` is not a valid template.
     #[error("invalid `template_path` in {path}")]
     Template {
@@ -311,6 +335,37 @@ mod tests {
         assert_eq!(
             project_path(&config),
             Path::new("/home/tester/aoc/2024/day07/rust")
+        );
+    }
+
+    #[test]
+    fn refuses_a_relative_template() {
+        // A solution runs with its project as the working directory, so a
+        // relative template is read against the very path it just named.
+        for source in [
+            "aoc/{{year}}/day{{pad day}}/{{language}}",
+            "./aoc/{{year}}/day{{pad day}}",
+            "../aoc/{{year}}/day{{pad day}}",
+        ] {
+            let error = load(&format!("template_path: \"{source}\""))
+                .expect_err("a relative template cannot be resolved");
+
+            assert!(
+                matches!(&error, ConfigError::RelativeTemplate { template, .. } if template == source),
+                "{source}: {error:?}"
+            );
+            assert!(error.to_string().contains("absolute"), "{error}");
+        }
+    }
+
+    #[test]
+    fn a_relative_template_is_refused_before_its_placeholders_are_read() {
+        // The path being unusable is the more actionable of the two problems.
+        let error = load("template_path: \"aoc/{{year}}\"").expect_err("relative, and dayless");
+
+        assert!(
+            matches!(error, ConfigError::RelativeTemplate { .. }),
+            "{error:?}"
         );
     }
 
