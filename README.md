@@ -69,7 +69,7 @@ never stops a command that needs no cookie.
 | `{{year}}` | The four-digit year, e.g. `2024` |
 | `{{day}}` | The day, unpadded, e.g. `7` |
 | `{{pad day}}` | The day, zero-padded to two digits, e.g. `07` |
-| `{{language}}` | `rust`, `csharp`, `java` or `python` |
+| `{{language}}` | `rust`, `csharp`, `java`, `python`, `javascript`, `go`, `c`, `cpp`, `ruby` or `bash` |
 
 Whitespace inside the braces is insignificant, so `{{pad day}}` and
 `{{ pad day }}` are the same placeholder. `{{year}}` and a day placeholder are
@@ -93,6 +93,12 @@ The file is named after the language and carries no extension.
 | `csharp` | `base/csharp` | `Program.cs` |
 | `java` | `base/java` | `Main.java` |
 | `python` | `base/python` | `main.py` |
+| `javascript` | `base/javascript` | `main.js` |
+| `go` | `base/go` | `main.go` |
+| `c` | `base/c` | `main.c` |
+| `cpp` | `base/cpp` | `main.cpp` |
+| `ruby` | `base/ruby` | `main.rb` |
+| `bash` | `base/bash` | `main.sh` |
 
 ## Usage
 
@@ -113,7 +119,7 @@ aoc [OPTIONS] [MODE]...
 | --- | --- |
 | `-y, --year <YEAR>` | Puzzle year. Defaults to the most recent event. |
 | `-d, --day <DAY>` | Puzzle day, `1`–`25` (`1`–`12` from 2025 on). Defaults to today during December, otherwise `1`. |
-| `-l, --language <LANGUAGE>` | `rust`, `csharp`, `java` or `python`. |
+| `-l, --language <LANGUAGE>` | `rust`, `csharp`, `java`, `python`, `javascript`, `go`, `c`, `cpp`, `ruby` or `bash`. |
 | `--no-submit` | Run the solution but do not submit its answers. |
 | `--config <FILE>` | Use a specific config file. |
 | `-h, --help` / `-V, --version` | |
@@ -175,19 +181,36 @@ never affects submission.
 
 An answer that has been accepted is remembered under `$XDG_STATE_HOME/aoc`, so
 re-running a solved puzzle verifies locally instead of submitting again. Puzzle
-inputs are kept there too — see [Inputs](#inputs).
+inputs and build output are kept there too — see [Inputs](#inputs) and
+[Build output](#build-output).
 
 ### Per-language commands
 
+A compiled language is built optimized once and then executed directly, with no
+build tool left in the loop.
+
 | Language | Scaffold | Build | Run |
 | --- | --- | --- | --- |
-| `rust` | `cargo init --bin` | `cargo build --release` | `cargo run --release` |
-| `csharp` | `dotnet new console` | `dotnet build -c Release` | `dotnet run -c Release --no-build` |
-| `java` | *(creates `Main.java`)* | `javac Main.java` | `java -cp . Main` |
+| `rust` | `cargo init --bin` | `cargo build --release` | the binary in `target/release` |
+| `csharp` | `dotnet new console` | `dotnet build -c Release` | the launcher in `bin/Release` |
+| `java` | *(creates `Main.java`)* | `javac -d …` | `java -cp … Main` |
+| `go` | `go mod init` | `go build` | the built binary |
+| `c` | *(creates `main.c`)* | `cc -O2` | the built binary |
+| `cpp` | *(creates `main.cpp`)* | `c++ -O2` | the built binary |
 | `python` | *(creates `main.py`)* | — | `python3 main.py` |
+| `javascript` | *(creates `main.js`)* | — | `node main.js` |
+| `ruby` | *(creates `main.rb`)* | — | `ruby main.rb` |
+| `bash` | *(creates `main.sh`)* | — | `bash main.sh` |
 
-Your solution should read its input from `../input.txt`, relative to the
-project directory — one input per day, shared across languages.
+`c` and `cpp` go through `cc` and `c++`, so they use whichever compiler your
+system installed. `python` falls back to `python` where there is no `python3`,
+and `javascript` to `nodejs`. `go mod init` writes only a `go.mod`, so a `go`
+project starts from your `base/go` file — see [Base files](#base-files).
+
+Nothing a build produces is written into your project — see
+[Build output](#build-output). Whatever it takes to run it, a solution is always
+executed from its project directory, so it should read its input from
+`../input.txt` — one input per day, shared across languages.
 
 ### Inputs
 
@@ -207,6 +230,29 @@ To force a fresh download, delete the cached copy and run again; for 2024 day 7
 that is `$XDG_STATE_HOME/aoc/inputs/2024-07.txt`. Deleting only the project's
 `input.txt` re-links it and contacts nothing.
 
+### Build output
+
+Compiling a solution should not leave anything lying around your solutions tree.
+Where the output goes depends on whether the language already has a directory of
+its own for it.
+
+`java`, `go`, `c` and `cpp` are compiled by hand, so their output goes to
+`$XDG_STATE_HOME/aoc/builds/<year>-<day>/<language>` — for 2024 day 7 in C, the
+binary is `$XDG_STATE_HOME/aoc/builds/2024-07/c/bin`. Nothing is written beside
+your sources.
+
+`rust` and `csharp` build where their own tooling expects, into `target/` and
+`bin/` inside the project. Redirecting those elsewhere buys nothing: your editor
+builds into the conventional directory regardless, so the project would end up
+with one anyway plus a second copy in the state directory. Cargo writes a
+`.gitignore` covering `target/` when it scaffolds; for C# add `bin/` and `obj/`
+to your solutions tree's ignore file.
+
+Either way the solution is executed directly, with the build tool used only as a
+fallback. Build output is rebuilt on every `aoc run` and is safe to delete at any
+time — deleting a project reclaims its own, though nothing prunes the state
+directory for you.
+
 ## Environment
 
 | Variable | Effect |
@@ -214,7 +260,7 @@ that is `$XDG_STATE_HOME/aoc/inputs/2024-07.txt`. Deleting only the project's
 | `AOC_SESSION` | Session cookie; overrides `cookie` in the config file and the `COOKIE` file. |
 | `AOC_CONFIG_DIR` | Configuration directory; overrides the default location. |
 | `XDG_CONFIG_HOME` | Used as `$XDG_CONFIG_HOME/aoc` when set. |
-| `XDG_STATE_HOME` | Where puzzle inputs, accepted answers and the request throttle are kept. |
+| `XDG_STATE_HOME` | Where puzzle inputs, compiled binaries, accepted answers and the request throttle are kept. |
 | `NO_COLOR` | Disables coloured output. |
 
 The configuration directory is the first of `--config`'s parent directory,

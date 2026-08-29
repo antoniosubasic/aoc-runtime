@@ -168,6 +168,13 @@ impl Puzzle {
     pub fn url(self) -> String {
         format!("https://adventofcode.com/{}/day/{}", self.year, self.day)
     }
+
+    /// The name this puzzle's files are kept under in the state directory, for
+    /// example `2024-07`. Sorting the names sorts the puzzles.
+    #[must_use]
+    pub fn slug(self) -> String {
+        format!("{}-{:02}", self.year.get(), self.day.get())
+    }
 }
 
 impl fmt::Display for Puzzle {

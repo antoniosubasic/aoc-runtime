@@ -33,8 +33,7 @@ impl InputStore {
     /// Where a puzzle's input is kept, whether or not it has been downloaded.
     #[must_use]
     pub fn path(&self, puzzle: Puzzle) -> PathBuf {
-        self.root
-            .join(format!("{}-{:02}.txt", puzzle.year.get(), puzzle.day.get()))
+        self.root.join(format!("{}.txt", puzzle.slug()))
     }
 
     /// Whether this puzzle's input has already been downloaded.

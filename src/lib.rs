@@ -9,7 +9,7 @@
 //!
 //! ```no_run
 //! use aoc_runtime::{
-//!     app::App, cli::Cli, config::Config, env::{Env, SystemClock},
+//!     app::App, build::BuildStore, cli::Cli, config::Config, env::{Env, SystemClock},
 //!     aoc::{cache::FileCache, input::InputStore},
 //!     process::SystemRunner, report::TermReporter, resolve,
 //! };
@@ -21,6 +21,7 @@
 //! let plans = resolve::plan(&cli, &config, &env.cwd, &SystemClock)?;
 //! let cache = FileCache::new(&env.state_dir);
 //! let inputs = InputStore::new(&env.state_dir);
+//! let builds = BuildStore::new(&env.state_dir);
 //!
 //! App {
 //!     config: &config,
@@ -28,6 +29,7 @@
 //!     client: None,
 //!     cache: &cache,
 //!     inputs: &inputs,
+//!     builds: &builds,
 //!     reporter: &mut TermReporter,
 //! }
 //! .execute_all(plans)?;
@@ -37,6 +39,7 @@
 pub mod answer;
 pub mod aoc;
 pub mod app;
+pub mod build;
 pub mod cli;
 pub mod config;
 pub mod env;

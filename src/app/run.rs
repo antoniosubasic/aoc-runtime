@@ -4,12 +4,12 @@ use super::App;
 use crate::{
     answer::{Answers, Outcome, classify},
     aoc::{AocClient, Verdict},
-    error::Error,
-    language::{Language, LanguageCommands},
+    error::{Error, IoResultExt as _},
+    language::{Language, LanguageCommands, Layout},
     process::{CommandOutput, IoPolicy, ProcessError},
     puzzle::Puzzle,
 };
-use std::path::Path;
+use std::{fs, path::Path};
 
 impl App<'_> {
     pub(super) fn run(
@@ -27,8 +27,18 @@ impl App<'_> {
 
         self.ensure_input(puzzle, project);
 
-        let commands = language.commands(project)?;
+        let artifacts = self.builds.dir(puzzle, language);
+        let layout = Layout {
+            project,
+            artifacts: &artifacts,
+        };
+        let commands = language.commands(layout)?;
+
         if let Some(build) = &commands.build {
+            if let Some(directory) = language.build_directory(layout) {
+                fs::create_dir_all(directory).io_context("create build directory", directory)?;
+            }
+
             self.runner.run_checked(build, IoPolicy::SILENT)?;
         }
 
@@ -155,11 +165,90 @@ mod tests {
             .run(puzzle(), Language::Rust, &project, false)
             .expect("run should succeed");
 
-        assert_eq!(programs(&harness), ["cargo", "cargo"]);
+        let binary = project.join("target").join("release").join("rust");
+        assert_eq!(
+            programs(&harness),
+            ["cargo".to_owned(), binary.to_string_lossy().into_owned()]
+        );
         assert_eq!(
             harness.runner.policies(),
             [IoPolicy::SILENT, IoPolicy::ANSWER]
         );
+    }
+
+    #[test]
+    fn the_build_directory_is_created_before_the_build_runs() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let project = root.path().join("2024").join("day07").join("c");
+        fs::create_dir_all(&project).expect("create project");
+        let mut harness = Harness::new(root.path());
+        harness.runner.push_stdout("").push_stdout("1227\n");
+        let artifacts = harness.builds.dir(puzzle(), Language::C);
+
+        harness
+            .app()
+            .run(puzzle(), Language::C, &project, false)
+            .expect("run should succeed");
+
+        assert!(
+            artifacts.is_dir(),
+            "{} was not created",
+            artifacts.display()
+        );
+    }
+
+    #[test]
+    fn a_language_that_builds_in_the_project_gets_no_state_directory() {
+        // Cargo makes and owns `target/`, so a state directory for Rust would
+        // only ever sit there empty.
+        let (root, project) = scaffold();
+        let mut harness = Harness::new(root.path());
+        harness.runner.push_stdout("").push_stdout("1227\n");
+        let artifacts = harness.builds.dir(puzzle(), Language::Rust);
+
+        harness
+            .app()
+            .run(puzzle(), Language::Rust, &project, false)
+            .expect("run should succeed");
+
+        assert!(!artifacts.exists(), "{} was created", artifacts.display());
+    }
+
+    #[test]
+    fn an_interpreted_language_leaves_no_build_directory_behind() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let project = root.path().join("2024").join("day07").join("python");
+        fs::create_dir_all(&project).expect("create project");
+        let mut harness = Harness::new(root.path());
+        harness.runner.push_stdout("1227\n");
+        let artifacts = harness.builds.dir(puzzle(), Language::Python);
+
+        harness
+            .app()
+            .run(puzzle(), Language::Python, &project, false)
+            .expect("run should succeed");
+
+        assert!(!artifacts.exists(), "{} was created", artifacts.display());
+    }
+
+    #[test]
+    fn nothing_a_build_wrote_lands_in_the_project() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let project = root.path().join("2024").join("day07").join("c");
+        fs::create_dir_all(&project).expect("create project");
+        let mut harness = Harness::new(root.path());
+        harness.runner.push_stdout("").push_stdout("1227\n");
+
+        harness
+            .app()
+            .run(puzzle(), Language::C, &project, false)
+            .expect("run should succeed");
+
+        let left: Vec<_> = fs::read_dir(&project)
+            .expect("read project")
+            .filter_map(|entry| entry.ok().map(|entry| entry.file_name()))
+            .collect();
+        assert!(left.is_empty(), "{left:?} was left in the project");
     }
 
     #[test]

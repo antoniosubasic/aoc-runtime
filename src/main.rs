@@ -3,6 +3,7 @@
 use aoc_runtime::{
     aoc::{AocClient, cache::FileCache, input::InputStore, live::LiveClient},
     app::App,
+    build::BuildStore,
     cli::Cli,
     config::Config,
     env::{Env, SystemClock},
@@ -44,6 +45,7 @@ fn run(cli: &Cli) -> Result<(), Error> {
         .transpose()?;
     let cache = FileCache::new(&env.state_dir);
     let inputs = InputStore::new(&env.state_dir);
+    let builds = BuildStore::new(&env.state_dir);
 
     let mut app = App {
         config: &config,
@@ -51,6 +53,7 @@ fn run(cli: &Cli) -> Result<(), Error> {
         client: client.as_ref().map(|client| client as &dyn AocClient),
         cache: &cache,
         inputs: &inputs,
+        builds: &builds,
         reporter: &mut reporter,
     };
 

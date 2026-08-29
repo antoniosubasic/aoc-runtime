@@ -3,10 +3,19 @@
 //! Everything a language needs - its CLI name, entry point and the commands
 //! used to scaffold, build and run it - lives in a single match arm, so adding
 //! a language is one variant and one arm.
+//!
+//! A compiled language builds optimized once and is then invoked directly, with
+//! no build tool left in the loop, and it builds into the state directory so the
+//! project holds sources and nothing else. Only a language whose build tool
+//! cannot hand over a runnable artifact keeps running through that tool.
 
-use crate::process::{CommandSpec, ProcessError};
+use crate::{
+    build,
+    process::{CommandSpec, ProcessError},
+};
 use clap::ValueEnum;
 use std::{
+    ffi::{OsStr, OsString},
     fmt,
     path::{Path, PathBuf},
     str::FromStr,
@@ -20,21 +29,44 @@ pub const BASE_DIR_NAME: &str = "base";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ValueEnum)]
 #[clap(rename_all = "lowercase")]
 pub enum Language {
-    /// Rust, scaffolded and driven through Cargo.
+    /// Rust, scaffolded by Cargo and built to an optimized binary.
     Rust,
-    /// C#, scaffolded and driven through the .NET SDK.
+    /// C#, scaffolded by the .NET SDK and built to a native launcher.
     CSharp,
     /// Java, compiled with `javac` and run with `java`.
     Java,
     /// Python, run directly by the interpreter.
     Python,
+    /// JavaScript, run directly by Node.
+    JavaScript,
+    /// Go, scaffolded as a module and built to a binary.
+    Go,
+    /// C, compiled to a binary by the system compiler.
+    C,
+    /// C++, compiled to a binary by the system compiler.
+    Cpp,
+    /// Ruby, run directly by the interpreter.
+    Ruby,
+    /// Bash, run directly by the shell.
+    Bash,
 }
 
-/// The commands used to scaffold, build and run a solution.
+/// Where a solution's sources and its build output live.
+///
+/// The two directories are far apart - one in the solutions tree, one in the
+/// state directory - and both are needed to describe a build, so they travel
+/// together rather than as two paths a caller could pass the wrong way round.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Layout<'a> {
+    /// The project directory, holding the solution's sources.
+    pub project: &'a Path,
+    /// The directory this puzzle and language build into.
+    pub artifacts: &'a Path,
+}
+
+/// The commands used to build and run a solution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LanguageCommands {
-    /// Scaffolding command, if the language needs more than an empty entry file.
-    pub init: Option<CommandSpec>,
     /// Compilation command, if the language is compiled.
     pub build: Option<CommandSpec>,
     /// The command that executes the solution.
@@ -45,7 +77,18 @@ pub struct LanguageCommands {
 
 impl Language {
     /// Every supported language.
-    pub const ALL: &'static [Self] = &[Self::Rust, Self::CSharp, Self::Java, Self::Python];
+    pub const ALL: &'static [Self] = &[
+        Self::Rust,
+        Self::CSharp,
+        Self::Java,
+        Self::Python,
+        Self::JavaScript,
+        Self::Go,
+        Self::C,
+        Self::Cpp,
+        Self::Ruby,
+        Self::Bash,
+    ];
 
     /// The language's canonical lowercase name, as used on the command line and
     /// in path templates.
@@ -56,6 +99,12 @@ impl Language {
             Self::CSharp => "csharp",
             Self::Java => "java",
             Self::Python => "python",
+            Self::JavaScript => "javascript",
+            Self::Go => "go",
+            Self::C => "c",
+            Self::Cpp => "cpp",
+            Self::Ruby => "ruby",
+            Self::Bash => "bash",
         }
     }
 
@@ -69,90 +118,247 @@ impl Language {
     /// The file inside a project that holds the solution.
     #[must_use]
     pub fn entry_file(self, project: &Path) -> PathBuf {
+        let name = match self {
+            Self::Rust => return project.join("src").join("main.rs"),
+            Self::CSharp => "Program.cs",
+            Self::Java => "Main.java",
+            Self::Python => "main.py",
+            Self::JavaScript => "main.js",
+            Self::Go => "main.go",
+            Self::C => "main.c",
+            Self::Cpp => "main.cpp",
+            Self::Ruby => "main.rb",
+            Self::Bash => "main.sh",
+        };
+
+        project.join(name)
+    }
+
+    /// The command that turns an empty directory into a project, for the
+    /// languages that need more than an entry file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProcessError::NoDirectoryName`] if the command needs the
+    /// project's directory name but `project` has none, such as a filesystem
+    /// root or a path ending in `..`.
+    pub fn scaffold(self, project: &Path) -> Result<Option<CommandSpec>, ProcessError> {
+        let command = match self {
+            Self::Rust => CommandSpec::new("cargo")
+                .args(["init", "--bin"])
+                .arg(project),
+            // The project is restored by the first build, which puts its
+            // intermediate output in the build directory; restoring here would
+            // instead leave an `obj` directory behind in the project.
+            Self::CSharp => CommandSpec::new("dotnet")
+                .args(["new", "console", "--no-restore", "--name"])
+                .arg(directory_name(project)?)
+                .arg("--output")
+                .arg(project),
+            // `go` is a module path the toolchain reserves, and under the
+            // obvious template the project directory is named after the
+            // language - so the module is qualified rather than named bare.
+            // A module path is always slash-separated, on every platform.
+            Self::Go => {
+                let mut module = OsString::from("aoc/");
+                module.push(directory_name(project)?);
+
+                CommandSpec::new("go").arg("mod").arg("init").arg(module)
+            }
+            Self::Java
+            | Self::Python
+            | Self::JavaScript
+            | Self::C
+            | Self::Cpp
+            | Self::Ruby
+            | Self::Bash => return Ok(None),
+        };
+
+        Ok(Some(command.current_dir(project)))
+    }
+
+    /// The directory a build needs created for it beforehand.
+    ///
+    /// A language whose build tool owns a directory inside the project creates
+    /// that itself, and an interpreted language builds nothing at all, so both
+    /// answer `None` - and neither leaves an empty directory in the state
+    /// directory behind.
+    #[must_use]
+    pub fn build_directory(self, layout: Layout<'_>) -> Option<&Path> {
         match self {
-            Self::Rust => project.join("src").join("main.rs"),
-            Self::CSharp => project.join("Program.cs"),
-            Self::Java => project.join("Main.java"),
-            Self::Python => project.join("main.py"),
+            Self::Java | Self::Go | Self::C | Self::Cpp => Some(layout.artifacts),
+            Self::Rust
+            | Self::CSharp
+            | Self::Python
+            | Self::JavaScript
+            | Self::Ruby
+            | Self::Bash => None,
         }
     }
 
-    /// Builds every command needed to work with a project in this language.
+    /// Builds the commands that compile and execute a project in this language.
     ///
     /// # Errors
     ///
     /// Returns [`ProcessError::NoDirectoryName`] if a command needs the
-    /// project's directory name but `project` has none, such as a filesystem
-    /// root or a path ending in `..`.
-    pub fn commands(self, project: &Path) -> Result<LanguageCommands, ProcessError> {
-        let commands = match self {
-            Self::Rust => {
-                let manifest = project.join("Cargo.toml");
-                LanguageCommands {
-                    init: Some(
-                        CommandSpec::new("cargo")
-                            .args(["init", "--bin"])
-                            .arg(project),
-                    ),
-                    build: Some(
-                        CommandSpec::new("cargo")
-                            .args(["build", "--release", "--manifest-path"])
-                            .arg(&manifest),
-                    ),
-                    run: CommandSpec::new("cargo")
-                        .args(["run", "--release", "--quiet", "--manifest-path"])
-                        .arg(&manifest),
-                    run_fallback: None,
-                }
-            }
-            Self::CSharp => {
-                let name = project
-                    .file_name()
-                    .ok_or_else(|| ProcessError::NoDirectoryName {
-                        path: project.to_path_buf(),
-                    })?;
+    /// project's directory name but the project path has none, such as a
+    /// filesystem root or a path ending in `..`.
+    pub fn commands(self, layout: Layout<'_>) -> Result<LanguageCommands, ProcessError> {
+        let Layout { project, artifacts } = layout;
+        let binary = build::binary(artifacts);
 
-                LanguageCommands {
-                    init: Some(
-                        CommandSpec::new("dotnet")
-                            .args(["new", "console", "--name"])
-                            .arg(name)
-                            .arg("--output")
-                            .arg(project),
-                    ),
-                    build: Some(
-                        CommandSpec::new("dotnet")
-                            .args(["build", "-c", "Release", "--nologo", "-v", "q"])
-                            .arg(project),
-                    ),
-                    run: CommandSpec::new("dotnet")
-                        .args(["run", "-c", "Release", "--no-build", "--project"])
-                        .arg(project),
-                    run_fallback: None,
-                }
-            }
+        let commands = match self {
+            Self::Rust => cargo_commands(project)?,
+            Self::CSharp => dotnet_commands(project)?,
+            // Java has no binary to hand over, so it keeps its two-step launch;
+            // only the class files move out of the project.
             Self::Java => LanguageCommands {
-                init: None,
-                build: Some(CommandSpec::new("javac").arg(self.entry_file(project))),
-                run: CommandSpec::new("java").arg("-cp").arg(project).arg("Main"),
+                build: Some(
+                    CommandSpec::new("javac")
+                        .arg("-d")
+                        .arg(artifacts)
+                        .arg(self.entry_file(project)),
+                ),
+                run: CommandSpec::new("java")
+                    .arg("-cp")
+                    .arg(artifacts)
+                    .arg("Main"),
                 run_fallback: None,
             },
+            Self::Go => LanguageCommands {
+                build: Some(
+                    CommandSpec::new("go")
+                        .arg("build")
+                        .arg("-o")
+                        .arg(&binary)
+                        .arg("."),
+                ),
+                run: CommandSpec::new(&binary),
+                run_fallback: None,
+            },
+            // `cc` and `c++` are whichever compiler the system installed, which
+            // saves guessing between gcc and clang.
+            Self::C | Self::Cpp => {
+                let compiler = if self == Self::C { "cc" } else { "c++" };
+
+                LanguageCommands {
+                    build: Some(
+                        CommandSpec::new(compiler)
+                            .arg("-O2")
+                            .arg("-o")
+                            .arg(&binary)
+                            .arg(self.entry_file(project)),
+                    ),
+                    run: CommandSpec::new(&binary),
+                    run_fallback: None,
+                }
+            }
             Self::Python => LanguageCommands {
-                init: None,
                 build: None,
                 run: CommandSpec::new("python3").arg(self.entry_file(project)),
                 run_fallback: Some(CommandSpec::new("python").arg(self.entry_file(project))),
+            },
+            Self::JavaScript => LanguageCommands {
+                build: None,
+                run: CommandSpec::new("node").arg(self.entry_file(project)),
+                run_fallback: Some(CommandSpec::new("nodejs").arg(self.entry_file(project))),
+            },
+            Self::Ruby => LanguageCommands {
+                build: None,
+                run: CommandSpec::new("ruby").arg(self.entry_file(project)),
+                run_fallback: None,
+            },
+            Self::Bash => LanguageCommands {
+                build: None,
+                run: CommandSpec::new("bash").arg(self.entry_file(project)),
+                run_fallback: None,
             },
         };
 
         Ok(commands.with_working_dir(project))
     }
+
+    /// Every language name, in the order [`Language::ALL`] lists them.
+    fn names() -> String {
+        Self::ALL
+            .iter()
+            .map(|language| language.name())
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+/// Rust builds with Cargo and then steps around it.
+///
+/// The build stays in `target/`, where Cargo, the editor tooling and the
+/// `.gitignore` Cargo itself writes all expect it; only the run steps around
+/// the tool. Cargo names the binary after the package, which `cargo init` takes
+/// from the directory - a package renamed by hand is not worth guessing at, so
+/// the fallback hands the run back to Cargo.
+fn cargo_commands(project: &Path) -> Result<LanguageCommands, ProcessError> {
+    let manifest = project.join("Cargo.toml");
+    // Both the subcommand and its option, in that order.
+    let cargo = |subcommand: &[&str]| {
+        CommandSpec::new("cargo")
+            .args(subcommand)
+            .arg("--manifest-path")
+            .arg(&manifest)
+    };
+
+    Ok(LanguageCommands {
+        build: Some(cargo(&["build", "--release"])),
+        run: CommandSpec::new(
+            project
+                .join("target")
+                .join("release")
+                .join(directory_name(project)?),
+        ),
+        run_fallback: Some(cargo(&["run", "--release", "--quiet"])),
+    })
+}
+
+/// C# builds with the .NET SDK and then steps around it.
+///
+/// `dotnet build` writes a native launcher next to the assembly, so the
+/// solution runs without the SDK driving it. The build stays under `bin/`, and
+/// `obj/` stays where it lands, because the C# language server needs the
+/// restore artifacts in the place it looks for them. `-o` is still needed: the
+/// default output path carries the target framework, which is not knowable
+/// without reading the project file.
+fn dotnet_commands(project: &Path) -> Result<LanguageCommands, ProcessError> {
+    let output = project.join("bin").join("Release");
+
+    Ok(LanguageCommands {
+        build: Some(
+            CommandSpec::new("dotnet")
+                .args(["build", "-c", "Release", "--nologo", "-v", "q", "-o"])
+                .arg(&output)
+                .arg(project),
+        ),
+        run: CommandSpec::new(output.join(directory_name(project)?)),
+        run_fallback: Some(
+            CommandSpec::new("dotnet")
+                .args(["run", "-c", "Release", "--project"])
+                .arg(project),
+        ),
+    })
+}
+
+/// The name of the directory a project sits in, which the languages scaffolded
+/// by a build tool are named after.
+fn directory_name(project: &Path) -> Result<&OsStr, ProcessError> {
+    project
+        .file_name()
+        .ok_or_else(|| ProcessError::NoDirectoryName {
+            path: project.to_path_buf(),
+        })
 }
 
 impl LanguageCommands {
+    /// Runs everything from the project directory, wherever the binary itself
+    /// ended up: a solution reads its input from `../input.txt`.
     fn with_working_dir(self, project: &Path) -> Self {
         Self {
-            init: self.init.map(|spec| spec.current_dir(project)),
             build: self.build.map(|spec| spec.current_dir(project)),
             run: self.run.current_dir(project),
             run_fallback: self.run_fallback.map(|spec| spec.current_dir(project)),
@@ -168,7 +374,7 @@ impl fmt::Display for Language {
 
 /// The error returned when a string does not name a supported language.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("unknown language `{name}` (expected one of: rust, csharp, java, python)")]
+#[error("unknown language `{name}` (expected one of: {})", Language::names())]
 pub struct UnknownLanguage {
     /// The unrecognised name.
     pub name: String,
@@ -191,10 +397,22 @@ impl FromStr for Language {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::OsStr;
+
+    const ARTIFACTS: &str = "/state/builds/2024-07/c";
 
     fn project() -> PathBuf {
         PathBuf::from("/aoc/2024/day07/rust")
+    }
+
+    fn layout<'a>(project: &'a Path, artifacts: &'a Path) -> Layout<'a> {
+        Layout { project, artifacts }
+    }
+
+    fn commands_for(language: Language, project: &Path) -> LanguageCommands {
+        let artifacts = PathBuf::from("/state/builds/2024-07").join(language.name());
+        language
+            .commands(layout(project, &artifacts))
+            .expect("commands should build")
     }
 
     fn args_of(spec: &CommandSpec) -> Vec<String> {
@@ -202,6 +420,12 @@ mod tests {
             .iter()
             .map(|arg| arg.to_string_lossy().into_owned())
             .collect()
+    }
+
+    fn paths_of(spec: &CommandSpec) -> Vec<String> {
+        let mut paths = args_of(spec);
+        paths.push(spec.program().to_string_lossy().into_owned());
+        paths
     }
 
     #[test]
@@ -212,10 +436,9 @@ mod tests {
         assert_eq!(names.len(), Language::ALL.len());
 
         for language in Language::ALL {
-            let commands = language
-                .commands(&project())
-                .expect("commands should build");
-            assert_eq!(commands.run.working_dir(), Some(project().as_path()));
+            let project = project().with_file_name(language.name());
+            let commands = commands_for(*language, &project);
+            assert_eq!(commands.run.working_dir(), Some(project.as_path()));
         }
     }
 
@@ -239,34 +462,140 @@ mod tests {
     }
 
     #[test]
-    fn rust_runs_the_optimized_build() {
-        let commands = Language::Rust
-            .commands(&project())
-            .expect("commands should build");
+    fn an_unknown_language_is_offered_every_name_there_is() {
+        let error = "brainfuck"
+            .parse::<Language>()
+            .expect_err("brainfuck is not supported");
+        let message = error.to_string();
 
-        assert_eq!(commands.run.program(), "cargo");
-        let args = args_of(&commands.run);
-        assert!(args.contains(&"run".to_owned()), "{args:?}");
-        assert!(args.contains(&"--release".to_owned()), "{args:?}");
-        let manifest = project().join("Cargo.toml");
-        assert!(
-            args.contains(&manifest.to_string_lossy().into_owned()),
-            "{args:?}"
+        for language in Language::ALL {
+            assert!(message.contains(language.name()), "{message}");
+        }
+    }
+
+    #[test]
+    fn a_solution_always_runs_from_its_project_directory() {
+        // Solutions read `../input.txt`, so where the binary sits is beside the
+        // point - the working directory has to stay put.
+        for language in Language::ALL {
+            let project = project().with_file_name(language.name());
+            let commands = commands_for(*language, &project);
+
+            for spec in [Some(&commands.run), commands.run_fallback.as_ref()]
+                .into_iter()
+                .flatten()
+            {
+                assert_eq!(
+                    spec.working_dir(),
+                    Some(project.as_path()),
+                    "{} runs elsewhere",
+                    language.name()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_manually_compiled_language_writes_nothing_into_the_project() {
+        for language in Language::ALL {
+            let project = project().with_file_name(language.name());
+            let artifacts = PathBuf::from("/state/builds/2024-07").join(language.name());
+            let commands = commands_for(*language, &project);
+
+            // Cargo and the .NET SDK build inside the project on purpose; the
+            // rule is for the languages aimed at the state directory.
+            let (Some(build), Some(_)) = (
+                &commands.build,
+                language.build_directory(layout(&project, &artifacts)),
+            ) else {
+                continue;
+            };
+
+            // The only paths a build may name inside the project are the ones
+            // it reads: the sources and the manifest describing them.
+            let inputs: Vec<String> = [
+                language.entry_file(&project),
+                project.join("Cargo.toml"),
+                project.clone(),
+            ]
+            .iter()
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect();
+
+            for path in paths_of(build) {
+                assert!(
+                    !path.starts_with(&*project.to_string_lossy()) || inputs.contains(&path),
+                    "{} writes {path} into the project",
+                    language.name()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn rust_runs_the_compiled_binary_instead_of_cargo() {
+        let commands = commands_for(Language::Rust, &project());
+
+        assert_eq!(
+            commands.run.program(),
+            OsStr::new("/aoc/2024/day07/rust/target/release/rust")
+        );
+        assert!(args_of(&commands.run).is_empty());
+    }
+
+    #[test]
+    fn rust_builds_optimized_into_cargos_own_target_directory() {
+        let commands = commands_for(Language::Rust, &project());
+        let build = commands.build.expect("rust is compiled");
+
+        // Asserted in full: the option belongs to the subcommand, so a spec
+        // that merely mentions it in some other order is not a valid cargo
+        // invocation.
+        assert_eq!(build.program(), OsStr::new("cargo"));
+        assert_eq!(
+            args_of(&build),
+            [
+                "build",
+                "--release",
+                "--manifest-path",
+                "/aoc/2024/day07/rust/Cargo.toml"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_renamed_rust_package_falls_back_to_cargo() {
+        // The binary is named after the package, which `cargo init` takes from
+        // the directory; a package renamed by hand is not worth guessing at.
+        let commands = commands_for(Language::Rust, &project());
+        let fallback = commands.run_fallback.expect("rust falls back to cargo");
+
+        assert_eq!(fallback.program(), OsStr::new("cargo"));
+        assert_eq!(
+            args_of(&fallback),
+            [
+                "run",
+                "--release",
+                "--quiet",
+                "--manifest-path",
+                "/aoc/2024/day07/rust/Cargo.toml"
+            ]
         );
     }
 
     #[test]
     fn csharp_names_the_project_after_its_directory() {
-        let commands = Language::CSharp
-            .commands(Path::new("/aoc/2024/day07/csharp"))
-            .expect("commands should build");
-        let init = commands.init.expect("csharp scaffolds with dotnet new");
+        let scaffold = Language::CSharp
+            .scaffold(Path::new("/aoc/2024/day07/csharp"))
+            .expect("commands should build")
+            .expect("csharp scaffolds with dotnet new");
 
         assert_eq!(
-            args_of(&init),
+            args_of(&scaffold),
             [
                 "new",
                 "console",
+                "--no-restore",
                 "--name",
                 "csharp",
                 "--output",
@@ -276,21 +605,35 @@ mod tests {
     }
 
     #[test]
-    fn csharp_run_reuses_the_build_output() {
-        let commands = Language::CSharp
-            .commands(&project())
-            .expect("commands should build");
+    fn csharp_runs_the_launcher_the_build_produced() {
+        let project = PathBuf::from("/aoc/2024/day07/csharp");
+        let commands = commands_for(Language::CSharp, &project);
+        let build = commands.build.expect("csharp is compiled");
 
-        assert!(args_of(&commands.run).contains(&"--no-build".to_owned()));
-        assert!(
-            args_of(&commands.build.expect("csharp is compiled")).contains(&"Release".to_owned())
+        assert_eq!(
+            commands.run.program(),
+            OsStr::new("/aoc/2024/day07/csharp/bin/Release/csharp")
+        );
+        assert_eq!(
+            args_of(&build),
+            [
+                "build",
+                "-c",
+                "Release",
+                "--nologo",
+                "-v",
+                "q",
+                "-o",
+                "/aoc/2024/day07/csharp/bin/Release",
+                "/aoc/2024/day07/csharp"
+            ]
         );
     }
 
     #[test]
     fn a_project_path_without_a_directory_name_is_an_error() {
         let error = Language::CSharp
-            .commands(Path::new("/"))
+            .scaffold(Path::new("/"))
             .expect_err("root has no directory name");
 
         assert!(
@@ -301,13 +644,17 @@ mod tests {
 
     #[test]
     fn python_is_interpreted_and_falls_back_to_python2_naming() {
-        let commands = Language::Python
-            .commands(Path::new("/aoc/2024/day07/python"))
-            .expect("commands should build");
+        let project = PathBuf::from("/aoc/2024/day07/python");
+        let commands = commands_for(Language::Python, &project);
 
         assert!(commands.build.is_none());
-        assert!(commands.init.is_none());
-        assert_eq!(commands.run.program(), "python3");
+        assert!(
+            Language::Python
+                .scaffold(&project)
+                .expect("scaffolding should build")
+                .is_none()
+        );
+        assert_eq!(commands.run.program(), OsStr::new("python3"));
         assert_eq!(
             commands.run_fallback.as_ref().map(CommandSpec::program),
             Some(OsStr::new("python"))
@@ -315,21 +662,134 @@ mod tests {
     }
 
     #[test]
-    fn java_compiles_and_runs_the_main_class() {
-        let path = Path::new("/aoc/2024/day07/java");
-        let commands = Language::Java
-            .commands(path)
-            .expect("commands should build");
+    fn javascript_falls_back_to_the_debian_binary_name() {
+        let project = PathBuf::from("/aoc/2024/day07/javascript");
+        let commands = commands_for(Language::JavaScript, &project);
 
-        assert!(commands.init.is_none());
-        assert_eq!(
-            args_of(&commands.build.expect("java is compiled")),
-            [path.join("Main.java").to_string_lossy().into_owned()]
-        );
+        assert!(commands.build.is_none());
+        assert_eq!(commands.run.program(), OsStr::new("node"));
         assert_eq!(
             args_of(&commands.run),
-            ["-cp", "/aoc/2024/day07/java", "Main"]
+            ["/aoc/2024/day07/javascript/main.js"]
         );
+        assert_eq!(
+            commands.run_fallback.as_ref().map(CommandSpec::program),
+            Some(OsStr::new("nodejs"))
+        );
+    }
+
+    #[test]
+    fn java_compiles_and_runs_the_main_class_out_of_tree() {
+        let project = PathBuf::from("/aoc/2024/day07/java");
+        let commands = commands_for(Language::Java, &project);
+
+        assert_eq!(
+            args_of(&commands.build.expect("java is compiled")),
+            [
+                "-d",
+                "/state/builds/2024-07/java",
+                "/aoc/2024/day07/java/Main.java"
+            ]
+        );
+        assert_eq!(commands.run.program(), OsStr::new("java"));
+        assert_eq!(
+            args_of(&commands.run),
+            ["-cp", "/state/builds/2024-07/java", "Main"]
+        );
+    }
+
+    #[test]
+    fn go_scaffolds_a_module_named_after_its_directory() {
+        let project = PathBuf::from("/aoc/2024/day07/go");
+        let scaffold = Language::Go
+            .scaffold(&project)
+            .expect("scaffolding should build")
+            .expect("go scaffolds a module");
+
+        assert_eq!(scaffold.program(), OsStr::new("go"));
+        assert_eq!(args_of(&scaffold), ["mod", "init", "aoc/go"]);
+        assert_eq!(scaffold.working_dir(), Some(project.as_path()));
+    }
+
+    #[test]
+    fn a_go_module_is_never_named_after_a_reserved_path() {
+        // `go mod init go` is rejected outright, and a project directory named
+        // after its language is exactly what the obvious template produces.
+        for directory in ["go", "cmd"] {
+            let project = project().with_file_name(directory);
+            let scaffold = Language::Go
+                .scaffold(&project)
+                .expect("scaffolding should build")
+                .expect("go scaffolds a module");
+
+            assert_eq!(
+                args_of(&scaffold),
+                ["mod", "init", &format!("aoc/{directory}")]
+            );
+        }
+    }
+
+    #[test]
+    fn go_builds_the_module_to_the_state_directory() {
+        let project = PathBuf::from("/aoc/2024/day07/go");
+        let commands = commands_for(Language::Go, &project);
+
+        assert_eq!(
+            args_of(&commands.build.expect("go is compiled")),
+            ["build", "-o", "/state/builds/2024-07/go/bin", "."]
+        );
+        assert_eq!(
+            commands.run.program(),
+            OsStr::new("/state/builds/2024-07/go/bin")
+        );
+    }
+
+    #[test]
+    fn c_and_cpp_optimize_through_the_system_compiler() {
+        let expected = [
+            (Language::C, "cc", "main.c"),
+            (Language::Cpp, "c++", "main.cpp"),
+        ];
+
+        for (language, compiler, entry) in expected {
+            let project = project().with_file_name(language.name());
+            let commands = commands_for(language, &project);
+            let build = commands.build.expect("compiled");
+            let binary = format!("/state/builds/2024-07/{}/bin", language.name());
+
+            assert_eq!(build.program(), OsStr::new(compiler));
+            assert_eq!(
+                args_of(&build),
+                [
+                    "-O2",
+                    "-o",
+                    &binary,
+                    &*project.join(entry).to_string_lossy()
+                ]
+            );
+            assert_eq!(commands.run.program(), OsStr::new(&binary));
+            assert!(commands.run_fallback.is_none());
+        }
+    }
+
+    #[test]
+    fn ruby_and_bash_are_handed_straight_to_their_interpreter() {
+        let expected = [
+            (Language::Ruby, "ruby", "main.rb"),
+            (Language::Bash, "bash", "main.sh"),
+        ];
+
+        for (language, program, entry) in expected {
+            let project = project().with_file_name(language.name());
+            let commands = commands_for(language, &project);
+
+            assert!(commands.build.is_none());
+            assert_eq!(commands.run.program(), OsStr::new(program));
+            assert_eq!(
+                args_of(&commands.run),
+                [project.join(entry).to_string_lossy().into_owned()]
+            );
+        }
     }
 
     #[test]
@@ -338,31 +798,71 @@ mod tests {
         let project = Path::new("/aoc/2024/day07/x");
 
         let expected = [
-            (
-                Language::Rust,
-                "/aoc/2024/day07/x/src/main.rs",
-                "/home/u/.config/aoc/base/rust",
-            ),
-            (
-                Language::CSharp,
-                "/aoc/2024/day07/x/Program.cs",
-                "/home/u/.config/aoc/base/csharp",
-            ),
-            (
-                Language::Java,
-                "/aoc/2024/day07/x/Main.java",
-                "/home/u/.config/aoc/base/java",
-            ),
-            (
-                Language::Python,
-                "/aoc/2024/day07/x/main.py",
-                "/home/u/.config/aoc/base/python",
-            ),
+            (Language::Rust, "src/main.rs"),
+            (Language::CSharp, "Program.cs"),
+            (Language::Java, "Main.java"),
+            (Language::Python, "main.py"),
+            (Language::JavaScript, "main.js"),
+            (Language::Go, "main.go"),
+            (Language::C, "main.c"),
+            (Language::Cpp, "main.cpp"),
+            (Language::Ruby, "main.rb"),
+            (Language::Bash, "main.sh"),
         ];
 
-        for (language, entry, base) in expected {
-            assert_eq!(language.entry_file(project), Path::new(entry));
-            assert_eq!(language.base_file(config), Path::new(base));
+        assert_eq!(expected.len(), Language::ALL.len());
+
+        for (language, entry) in expected {
+            assert_eq!(language.entry_file(project), project.join(entry));
+            assert_eq!(
+                language.base_file(config),
+                config.join("base").join(language.name())
+            );
+        }
+    }
+
+    #[test]
+    fn the_build_directory_is_the_one_it_was_handed() {
+        let project = project().with_file_name("c");
+        let artifacts = Path::new(ARTIFACTS);
+        let commands = Language::C
+            .commands(layout(&project, artifacts))
+            .expect("commands should build");
+
+        assert_eq!(
+            Language::C.build_directory(layout(&project, artifacts)),
+            Some(artifacts)
+        );
+        assert!(
+            args_of(&commands.build.expect("c is compiled")).contains(&format!("{ARTIFACTS}/bin"))
+        );
+    }
+
+    #[test]
+    fn only_a_manually_compiled_language_asks_for_a_state_directory() {
+        // Cargo and the .NET SDK make and own `target/` and `bin/`; creating a
+        // state directory for them would only leave an empty one behind, and an
+        // interpreted language builds nothing at all.
+        let artifacts = Path::new(ARTIFACTS);
+
+        for language in Language::ALL {
+            let project = project().with_file_name(language.name());
+            let wanted = language
+                .build_directory(layout(&project, artifacts))
+                .is_some();
+            let expected = matches!(
+                language,
+                Language::Java | Language::Go | Language::C | Language::Cpp
+            );
+
+            assert_eq!(wanted, expected, "{}", language.name());
+            if wanted {
+                assert!(
+                    commands_for(*language, &project).build.is_some(),
+                    "{} asks for a directory but never builds",
+                    language.name()
+                );
+            }
         }
     }
 }

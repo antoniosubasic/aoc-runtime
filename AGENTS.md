@@ -93,8 +93,31 @@ nothing to recreate.
 ### Adding a language
 
 `language.rs` is deliberately arranged so a new language is one `Language` variant plus one arm in
-each of `name`, `entry_file` and `commands`. `commands` returns `LanguageCommands { init, build,
-run, run_fallback }`; `init`/`build` are `None` when the language needs neither. Working directory is applied to all of them centrally by `with_working_dir`.
+each of `name`, `entry_file`, `scaffold`, `commands` and `build_directory`. `scaffold` is the one-off project-creation
+command, `None` when an empty entry file is enough; `commands` takes a `Layout { project, artifacts }`
+and returns `LanguageCommands { build, run, run_fallback }`, `build` being `None` for an interpreted
+language. Working directory is applied to all of them centrally by `with_working_dir`, and it is
+always the *project* — a solution reads `../input.txt` no matter where its binary ended up.
+
+A compiled language builds optimized once and is then invoked directly, with no build tool left in
+the loop; only a tool that cannot hand over a runnable artifact (`javac`) keeps driving the run.
+Where the artifact's name has to be guessed — cargo and dotnet both name it after the project
+directory — `run_fallback` hands the run back to the tool rather than guessing harder.
+
+### Build output
+
+`build.rs` is the other half of `env.state_dir`'s job: `BuildStore::dir(puzzle, language)` names
+`$XDG_STATE_HOME/aoc/builds/<year>-<day>/<language>`, keyed by `Puzzle::slug` exactly as
+`InputStore` keys inputs. It holds output for the languages compiled *by hand* (`java`, `go`, `c`,
+`cpp`), which have no output directory of their own — their `commands` arm must aim every output
+path at `layout.artifacts`.
+
+`rust` and `csharp` deliberately build inside the project, into the `target/` and `bin/` their own
+tooling owns. Redirecting them buys nothing: rust-analyzer and the C# language server build into
+those directories regardless, so the project would carry one anyway and the state directory a
+duplicate. `Language::build_directory` is the single place that split is written down; `dir` does no
+I/O and `app/run.rs` creates a directory only when that method names one, so neither a managed nor
+an interpreted language leaves an empty one behind.
 
 ### Errors
 

@@ -37,10 +37,8 @@ impl App<'_> {
     }
 
     fn scaffold(&mut self, language: Language, project: &Path) -> Result<(), Error> {
-        let commands = language.commands(project)?;
-
-        if let Some(init) = &commands.init {
-            self.runner.run_checked(init, IoPolicy::INHERIT)?;
+        if let Some(scaffold) = &language.scaffold(project)? {
+            self.runner.run_checked(scaffold, IoPolicy::INHERIT)?;
         } else {
             let entry = language.entry_file(project);
             create_parent(&entry)?;

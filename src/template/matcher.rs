@@ -207,7 +207,7 @@ mod tests {
     fn generates_an_anchored_pattern_with_nested_optional_groups() {
         assert_eq!(
             matcher(CANONICAL).pattern(),
-            r"^[/\\]root[/\\](?<year>\d{4})(?:[/\\]day(?<day>\d{1,2})(?:[/\\](?<language>csharp|python|java|rust))?)?(?:[/\\].*)?$"
+            r"^[/\\]root[/\\](?<year>\d{4})(?:[/\\]day(?<day>\d{1,2})(?:[/\\](?<language>javascript|csharp|python|bash|java|ruby|rust|cpp|go|c))?)?(?:[/\\].*)?$"
         );
     }
 
@@ -387,6 +387,20 @@ mod tests {
             let cwd = format!("/root/2024/day07/{}", language.name());
             assert_eq!(triple(detect(CANONICAL, &cwd)).2, Some(*language), "{cwd}");
         }
+    }
+
+    #[test]
+    fn a_language_name_is_not_read_as_a_shorter_one_it_starts_with() {
+        // `c` prefixes `cpp`, so the alternation has to offer the longer name
+        // first or every C++ directory reads as C.
+        assert_eq!(
+            triple(detect(CANONICAL, "/root/2024/day07/cpp")).2,
+            Some(Language::Cpp)
+        );
+        assert_eq!(
+            triple(detect(CANONICAL, "/root/2024/day07/cpp/src")).2,
+            Some(Language::Cpp)
+        );
     }
 
     #[test]

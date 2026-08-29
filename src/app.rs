@@ -10,6 +10,7 @@ mod run;
 
 use crate::{
     aoc::{AocClient, cache::AnswerCache, input::InputStore},
+    build::BuildStore,
     config::Config,
     error::Error,
     process::{CommandRunner, CommandSpec},
@@ -36,6 +37,9 @@ pub struct App<'a> {
     /// unlike its neighbours: linking a project at a cached file is what it
     /// does, and there is no linking without a filesystem to do it on.
     pub inputs: &'a InputStore,
+    /// Where compiled solutions are built to. Concrete for the same reason as
+    /// [`App::inputs`]: it names places on a filesystem.
+    pub builds: &'a BuildStore,
     /// Where output goes.
     pub reporter: &'a mut dyn Reporter,
 }
@@ -169,6 +173,7 @@ pub(crate) mod testing {
     use super::App;
     use crate::{
         aoc::{cache::memory::MemoryCache, fake::FakeClient, input::InputStore},
+        build::BuildStore,
         config::Config,
         env::Env,
         process::fake::FakeRunner,
@@ -182,6 +187,7 @@ pub(crate) mod testing {
         pub(crate) client: Option<FakeClient>,
         pub(crate) cache: MemoryCache,
         pub(crate) inputs: InputStore,
+        pub(crate) builds: BuildStore,
         pub(crate) reporter: RecordingReporter,
     }
 
@@ -193,6 +199,7 @@ pub(crate) mod testing {
                 client: None,
                 cache: MemoryCache::new(),
                 inputs: InputStore::new(root.join("state")),
+                builds: BuildStore::new(root.join("state")),
                 reporter: RecordingReporter::new(),
             }
         }
@@ -214,6 +221,7 @@ pub(crate) mod testing {
                 client: self.client.as_ref().map(|client| client as _),
                 cache: &self.cache,
                 inputs: &self.inputs,
+                builds: &self.builds,
                 reporter: &mut self.reporter,
             }
         }
