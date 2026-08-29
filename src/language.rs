@@ -325,6 +325,11 @@ fn cargo_commands(project: &Path) -> Result<LanguageCommands, ProcessError> {
 /// restore artifacts in the place it looks for them. `-o` is still needed: the
 /// default output path carries the target framework, which is not knowable
 /// without reading the project file.
+///
+/// The fallback rebuilds - the launcher it is standing in for is the only
+/// thing that knows where the build went - so it is silenced: whatever it
+/// writes to standard output is read as the solution's answers, and a single
+/// line of build chatter turns two answers into raw output nobody submits.
 fn dotnet_commands(project: &Path) -> Result<LanguageCommands, ProcessError> {
     let output = project.join("bin").join("Release");
 
@@ -338,7 +343,7 @@ fn dotnet_commands(project: &Path) -> Result<LanguageCommands, ProcessError> {
         run: CommandSpec::new(output.join(directory_name(project)?)),
         run_fallback: Some(
             CommandSpec::new("dotnet")
-                .args(["run", "-c", "Release", "--project"])
+                .args(["run", "-c", "Release", "-v", "q", "--project"])
                 .arg(project),
         ),
     })
@@ -625,6 +630,30 @@ mod tests {
                 "q",
                 "-o",
                 "/aoc/2024/day07/csharp/bin/Release",
+                "/aoc/2024/day07/csharp"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_csharp_fallback_prints_nothing_of_its_own() {
+        // Its standard output is read as the solution's answers, so a single
+        // line of build chatter would turn them into raw output nobody
+        // submits.
+        let project = PathBuf::from("/aoc/2024/day07/csharp");
+        let commands = commands_for(Language::CSharp, &project);
+        let fallback = commands.run_fallback.expect("csharp falls back to the sdk");
+
+        assert_eq!(fallback.program(), OsStr::new("dotnet"));
+        assert_eq!(
+            args_of(&fallback),
+            [
+                "run",
+                "-c",
+                "Release",
+                "-v",
+                "q",
+                "--project",
                 "/aoc/2024/day07/csharp"
             ]
         );
