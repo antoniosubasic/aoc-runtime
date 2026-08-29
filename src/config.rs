@@ -266,13 +266,29 @@ mod tests {
         env::CONFIG_FILE_NAME, language::Language, puzzle::Day, puzzle::Year, template::Params,
     };
 
+    /// The drive the paths in these tests sit on. A path that merely starts
+    /// with a separator is drive-relative on Windows, and a template that is
+    /// not absolute is refused.
+    const DRIVE: &str = if cfg!(windows) { "C:" } else { "" };
+
+    /// A path below `DRIVE`, spelled the way these tests spell one.
+    fn rooted(path: &str) -> PathBuf {
+        PathBuf::from(format!("{DRIVE}{path}"))
+    }
+
+    /// A configuration document naming `template` below `DRIVE`, with `rest`
+    /// following it as further keys.
+    fn document(template: &str, rest: &str) -> String {
+        format!("template_path: \"{DRIVE}{template}\"\n{rest}")
+    }
+
     fn env() -> Env {
         Env {
-            home: PathBuf::from("/home/tester"),
-            config_dir: PathBuf::from("/home/tester/.config/aoc"),
-            config_file: PathBuf::from("/home/tester/.config/aoc/config.yaml"),
-            state_dir: PathBuf::from("/home/tester/.local/state/aoc"),
-            cwd: PathBuf::from("/home/tester"),
+            home: rooted("/home/tester"),
+            config_dir: rooted("/home/tester/.config/aoc"),
+            config_file: rooted("/home/tester/.config/aoc/config.yaml"),
+            state_dir: rooted("/home/tester/.local/state/aoc"),
+            cwd: rooted("/home/tester"),
             session_cookie: None,
         }
     }
@@ -318,14 +334,13 @@ mod tests {
 
     #[test]
     fn loads_a_minimal_config() {
-        let (config, warnings) =
-            load("template_path: \"/aoc/{{year}}/day{{pad day}}/{{language}}\"")
-                .expect("config should load");
+        let (config, warnings) = load(&document("/aoc/{{year}}/day{{pad day}}/{{language}}", ""))
+            .expect("config should load");
 
         assert!(warnings.is_empty());
         assert_eq!(config.cookie, None);
         assert_eq!(config.editor, DEFAULT_EDITOR);
-        assert_eq!(project_path(&config), Path::new("/aoc/2024/day07/rust"));
+        assert_eq!(project_path(&config), rooted("/aoc/2024/day07/rust"));
     }
 
     #[test]
@@ -335,7 +350,7 @@ mod tests {
 
         assert_eq!(
             project_path(&config),
-            Path::new("/home/tester/aoc/2024/day07/rust")
+            rooted("/home/tester/aoc/2024/day07/rust")
         );
     }
 
@@ -372,17 +387,18 @@ mod tests {
 
     #[test]
     fn leaves_a_tilde_elsewhere_alone() {
-        let (config, _) = load("template_path: \"/aoc/~backup/{{year}}/day{{day}}\"")
-            .expect("config should load");
+        let (config, _) =
+            load(&document("/aoc/~backup/{{year}}/day{{day}}", "")).expect("config should load");
 
-        assert_eq!(project_path(&config), Path::new("/aoc/~backup/2024/day7"));
+        assert_eq!(project_path(&config), rooted("/aoc/~backup/2024/day7"));
     }
 
     #[test]
     fn reads_the_cookie_and_editor() {
-        let (config, _) = load(
-            "template_path: \"/aoc/{{year}}/day{{day}}\"\ncookie: \"  abc123  \"\neditor: nvim\n",
-        )
+        let (config, _) = load(&document(
+            "/aoc/{{year}}/day{{day}}",
+            "cookie: \"  abc123  \"\neditor: nvim\n",
+        ))
         .expect("config should load");
 
         assert_eq!(config.cookie.as_deref(), Some("abc123"));
@@ -391,7 +407,7 @@ mod tests {
 
     #[test]
     fn an_empty_cookie_is_no_cookie() {
-        let (config, _) = load("template_path: \"/aoc/{{year}}/day{{day}}\"\ncookie: \"\"\n")
+        let (config, _) = load(&document("/aoc/{{year}}/day{{day}}", "cookie: \"\"\n"))
             .expect("config should load");
 
         assert_eq!(config.cookie, None);
@@ -399,9 +415,11 @@ mod tests {
 
     #[test]
     fn debug_output_redacts_the_cookie() {
-        let (config, _) =
-            load("template_path: \"/aoc/{{year}}/day{{day}}\"\ncookie: super-secret\n")
-                .expect("config should load");
+        let (config, _) = load(&document(
+            "/aoc/{{year}}/day{{day}}",
+            "cookie: super-secret\n",
+        ))
+        .expect("config should load");
 
         let debug = format!("{config:?}");
 
@@ -415,7 +433,7 @@ mod tests {
         env.session_cookie = Some("from-env".to_owned());
 
         let (config, _) = Config::from_yaml(
-            "template_path: \"/aoc/{{year}}/day{{day}}\"\ncookie: from-file\n",
+            &document("/aoc/{{year}}/day{{day}}", "cookie: from-file\n"),
             &env,
         )
         .expect("config should load");
@@ -426,7 +444,7 @@ mod tests {
     #[test]
     fn the_cookie_file_stands_in_for_a_missing_cookie_key() {
         let (config, _) = load_from_disk(
-            "template_path: \"/aoc/{{year}}/day{{day}}\"\n",
+            &document("/aoc/{{year}}/day{{day}}", ""),
             Some("from-file\n"),
         )
         .expect("config should load");
@@ -437,7 +455,7 @@ mod tests {
     #[test]
     fn the_configured_cookie_wins_over_the_cookie_file() {
         let (config, _) = load_from_disk(
-            "template_path: \"/aoc/{{year}}/day{{day}}\"\ncookie: from-config\n",
+            &document("/aoc/{{year}}/day{{day}}", "cookie: from-config\n"),
             Some("from-file"),
         )
         .expect("config should load");
@@ -447,10 +465,7 @@ mod tests {
 
     #[test]
     fn the_environment_cookie_wins_over_the_cookie_file() {
-        let (_dir, mut env) = fixture(
-            "template_path: \"/aoc/{{year}}/day{{day}}\"\n",
-            Some("from-file"),
-        );
+        let (_dir, mut env) = fixture(&document("/aoc/{{year}}/day{{day}}", ""), Some("from-file"));
         env.session_cookie = Some("from-env".to_owned());
 
         let (config, _) = Config::load(&env).expect("config should load");
@@ -460,18 +475,15 @@ mod tests {
 
     #[test]
     fn a_blank_cookie_file_is_no_cookie() {
-        let (config, _) = load_from_disk(
-            "template_path: \"/aoc/{{year}}/day{{day}}\"\n",
-            Some("  \n"),
-        )
-        .expect("config should load");
+        let (config, _) = load_from_disk(&document("/aoc/{{year}}/day{{day}}", ""), Some("  \n"))
+            .expect("config should load");
 
         assert_eq!(config.cookie, None);
     }
 
     #[test]
     fn no_cookie_file_is_no_cookie() {
-        let (config, _) = load_from_disk("template_path: \"/aoc/{{year}}/day{{day}}\"\n", None)
+        let (config, _) = load_from_disk(&document("/aoc/{{year}}/day{{day}}", ""), None)
             .expect("config should load");
 
         assert_eq!(config.cookie, None);
@@ -479,7 +491,7 @@ mod tests {
 
     #[test]
     fn an_unreadable_cookie_file_warns_instead_of_stopping_every_command() {
-        let (dir, env) = fixture("template_path: \"/aoc/{{year}}/day{{day}}\"\n", None);
+        let (dir, env) = fixture(&document("/aoc/{{year}}/day{{day}}", ""), None);
         fs::create_dir(dir.path().join(COOKIE_FILE_NAME)).expect("create cookie directory");
 
         let (config, warnings) = Config::load(&env).expect("an unreadable cookie is not fatal");
@@ -491,9 +503,8 @@ mod tests {
 
     #[test]
     fn unknown_keys_produce_a_warning_instead_of_silence() {
-        let (config, warnings) =
-            load("template_path: \"/aoc/{{year}}/day{{day}}\"\ncookies: oops\n")
-                .expect("config should load");
+        let (config, warnings) = load(&document("/aoc/{{year}}/day{{day}}", "cookies: oops\n"))
+            .expect("config should load");
 
         assert_eq!(config.cookie, None);
         assert_eq!(warnings.len(), 1);
@@ -509,7 +520,7 @@ mod tests {
 
     #[test]
     fn an_invalid_template_names_the_config_file() {
-        let error = load("template_path: \"/aoc/{{year}}\"").expect_err("day is missing");
+        let error = load(&document("/aoc/{{year}}", "")).expect_err("day is missing");
 
         assert!(
             matches!(error, ConfigError::Template { .. }),

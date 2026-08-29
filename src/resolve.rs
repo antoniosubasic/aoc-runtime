@@ -247,23 +247,34 @@ mod tests {
     use crate::env::{Env, FixedClock};
     use clap::Parser as _;
 
+    /// The drive the paths in these tests sit on. A path that merely starts
+    /// with a separator is drive-relative on Windows, and a template that is
+    /// not absolute is refused.
+    const DRIVE: &str = if cfg!(windows) { "C:" } else { "" };
+
+    /// The template every plan here is resolved against, below `DRIVE`.
+    const TEMPLATE: &str = "/root/{{year}}/day{{pad day}}/{{language}}";
+
+    /// A path below `DRIVE`, spelled the way these tests spell one.
+    fn rooted(path: &str) -> PathBuf {
+        PathBuf::from(format!("{DRIVE}{path}"))
+    }
+
     fn env(cwd: &str) -> Env {
         Env {
-            home: PathBuf::from("/home/tester"),
-            config_dir: PathBuf::from("/home/tester/.config/aoc"),
-            config_file: PathBuf::from("/home/tester/.config/aoc/config.yaml"),
-            state_dir: PathBuf::from("/home/tester/.local/state/aoc"),
-            cwd: PathBuf::from(cwd),
+            home: rooted("/home/tester"),
+            config_dir: rooted("/home/tester/.config/aoc"),
+            config_file: rooted("/home/tester/.config/aoc/config.yaml"),
+            state_dir: rooted("/home/tester/.local/state/aoc"),
+            cwd: rooted(cwd),
             session_cookie: None,
         }
     }
 
     fn config() -> Config {
-        let (config, _) = Config::from_yaml(
-            "template_path: \"/root/{{year}}/day{{pad day}}/{{language}}\"",
-            &env("/"),
-        )
-        .expect("config should load");
+        let (config, _) =
+            Config::from_yaml(&format!("template_path: \"{DRIVE}{TEMPLATE}\""), &env("/"))
+                .expect("config should load");
         config
     }
 
@@ -282,7 +293,7 @@ mod tests {
     }
 
     fn resolve_all(args: &[&str], cwd: &str, today: NaiveDate) -> Result<Vec<Plan>, ResolveError> {
-        plan(&cli(args), &config(), Path::new(cwd), &FixedClock(today))
+        plan(&cli(args), &config(), &rooted(cwd), &FixedClock(today))
     }
 
     fn resolve_one(args: &[&str], cwd: &str, today: NaiveDate) -> Result<Plan, ResolveError> {
@@ -364,7 +375,10 @@ mod tests {
         )
         .expect("plan should resolve");
 
-        assert_eq!(project_of(&plan), Some(Path::new("/root/2019/day03/java")));
+        assert_eq!(
+            project_of(&plan),
+            Some(rooted("/root/2019/day03/java").as_path())
+        );
     }
 
     #[test]
@@ -372,7 +386,10 @@ mod tests {
         let plan = resolve_one(&["path"], "/root/2019/day03/java", date(2024, 12, 14))
             .expect("plan should resolve");
 
-        assert_eq!(project_of(&plan), Some(Path::new("/root/2019/day03/java")));
+        assert_eq!(
+            project_of(&plan),
+            Some(rooted("/root/2019/day03/java").as_path())
+        );
     }
 
     #[test]
@@ -380,7 +397,10 @@ mod tests {
         let plan = resolve_one(&["-l", "rust", "path"], "/elsewhere", date(2024, 12, 14))
             .expect("plan should resolve");
 
-        assert_eq!(project_of(&plan), Some(Path::new("/root/2024/day14/rust")));
+        assert_eq!(
+            project_of(&plan),
+            Some(rooted("/root/2024/day14/rust").as_path())
+        );
     }
 
     #[test]
@@ -388,7 +408,10 @@ mod tests {
         let plan = resolve_one(&["-l", "rust", "path"], "/root/2019", date(2024, 12, 14))
             .expect("plan should resolve");
 
-        assert_eq!(project_of(&plan), Some(Path::new("/root/2019/day14/rust")));
+        assert_eq!(
+            project_of(&plan),
+            Some(rooted("/root/2019/day14/rust").as_path())
+        );
     }
 
     #[test]
@@ -412,7 +435,10 @@ mod tests {
         let plan = resolve_one(&["path"], "/root/2025/day20/rust", date(2025, 12, 5))
             .expect("plan should resolve");
 
-        assert_eq!(project_of(&plan), Some(Path::new("/root/2025/day05/rust")));
+        assert_eq!(
+            project_of(&plan),
+            Some(rooted("/root/2025/day05/rust").as_path())
+        );
     }
 
     #[test]
