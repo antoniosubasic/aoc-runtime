@@ -127,7 +127,10 @@ aoc [OPTIONS] [MODE]...
 | `--config <FILE>` | Use a specific config file. |
 | `-h, --help` / `-V, --version` | |
 
-Neither `url`, `open` nor `clean` needs a language.
+Neither `url`, `open` nor `clean` needs a language, and `clean` needs no year
+or day either - it works on the state directory alone. `--all` and `--yes` are
+its own: passing either without `clean` is an error rather than a flag that
+quietly does nothing.
 
 Several modes run one after another, in the order given:
 
@@ -154,7 +157,9 @@ $ aoc clean --all        # also remove downloaded inputs and cached answers
 `--all` is a bigger deal than it looks. Deleting an input means downloading it
 again, and deleting an accepted answer means submitting it again, so `aoc` asks
 before doing either. Pass `--yes` to answer in advance; without a terminal to
-ask on and without `--yes`, `aoc clean --all` refuses rather than guessing.
+ask on and without `--yes`, `aoc clean --all` refuses rather than guessing. With
+nothing downloaded and nothing accepted there is nothing at stake, so it asks
+nothing and a scripted `aoc clean --all` keeps working.
 
 Two things it will never remove:
 

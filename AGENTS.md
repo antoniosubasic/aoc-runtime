@@ -41,9 +41,13 @@ src/cli.rs      src/env.rs          src/config.rs      src/resolve.rs           
 * **`resolve.rs`** is pure: `(Cli, Config, cwd, Clock) -> Vec<Plan>`, one plan per mode on the
   command line, in the order given. Precedence for year/day/language is explicit argument →
   recovered from the cwd via the template → date-based default, and the puzzle and project path are
-  shared by every mode. Each `Plan` variant carries exactly what its handler needs, so a mode that
-  requires a language cannot be constructed without one and no downstream code re-checks;
-  resolution is all-or-nothing, so a mode that cannot be planned fails before any mode executes.
+  shared by every mode that names one. Each `Plan` variant carries exactly what its handler needs,
+  so a mode that requires a language cannot be constructed without one and no downstream code
+  re-checks; resolution is all-or-nothing, so a mode that cannot be planned fails before any mode
+  executes. What a mode does not need it is never asked for: `clean` is planned without a puzzle,
+  a language or a project, so an out-of-range year/day pairing is only an error for the modes that
+  name a puzzle, and `--all`/`--yes` are refused unless `clean` is among the modes rather than
+  being ignored.
 * **`app.rs`** holds every injected dependency (`CommandRunner`, `AocClient`, `AnswerCache`,
   `InputStore`, `Reporter`, `Confirm`). `App::execute_all` walks the plans in order and stops at
   the first failure; `execute` dispatches one of them on `Plan`. `app/run.rs`, `app/init.rs` and
@@ -103,7 +107,10 @@ always the *project* — a solution reads `../input.txt` no matter where its bin
 A compiled language builds optimized once and is then invoked directly, with no build tool left in
 the loop; only a tool that cannot hand over a runnable artifact (`javac`) keeps driving the run.
 Where the artifact's name has to be guessed — cargo and dotnet both name it after the project
-directory — `run_fallback` hands the run back to the tool rather than guessing harder.
+directory — `run_fallback` hands the run back to the tool rather than guessing harder; a fallback
+that rebuilds must stay quiet, because its stdout is read as the solution's answers.
+`build::executable` is the one place the platform's executable suffix is written down, so the
+compiler and the run cannot disagree about the name of what was built.
 
 ### Build output
 
@@ -116,7 +123,9 @@ path at `layout.artifacts`.
 `BuildStore::clear` empties the whole tree; it is what a bare `aoc clean` does, and it is safe
 precisely because everything under it is regenerable. `InputStore` and `AnswerCache` grew the same
 `clear` for `clean --all`, and each store owns the removal of its own directory so nothing else
-repeats the `join("builds")`/`join("inputs")`/`join("answers")` literals.
+repeats the `join("builds")`/`join("inputs")`/`join("answers")` literals. `clean --all` asks only
+when an input or an answer is actually stored, so an unattended run with nothing to remove is not
+refused.
 
 `rust` and `csharp` deliberately build inside the project, into the `target/` and `bin/` their own
 tooling owns. Redirecting them buys nothing: rust-analyzer and the C# language server build into
