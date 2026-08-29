@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 From the next release onwards this file is maintained automatically by
 [release-plz](https://release-plz.dev) from the commit history.
 
+## [0.9.0](https://github.com/antoniosubasic/aoc-runtime/compare/v0.8.0...v0.9.0) - 2026-08-29
+
+### Added
+
+- *(language)* [**breaking**] run the built binary and add six languages
+- *(cli)* [**breaking**] empty the state directory with aoc clean
+
+### Changed
+
+- write the emptying rule down once
+
+### Documentation
+
+- describe what clean needs and what a fallback may print
+
+### Fixed
+
+- *(language)* keep build chatter out of the C# fallback's answers
+- *(language)* spell a built binary the way the platform does
+- *(report)* only ask when the question can be seen
+- *(cli)* do not ask about removing nothing
+- *(cli)* [**breaking**] plan clean without a puzzle and scope its flags to it
+- *(config)* refuse a relative template_path
+- *(config)* give advice a windows path can follow
+
 ## [0.8.0](https://github.com/antoniosubasic/aoc-runtime/compare/v0.7.0...v0.8.0) - 2026-08-29
 
 ### Added
