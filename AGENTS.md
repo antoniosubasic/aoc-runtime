@@ -199,6 +199,10 @@ guessing at a variant a newer client introduced.
   `tests/cli.rs` drives the real binary through `tests/support::Fixture`, which points
   `AOC_CONFIG_DIR`/`XDG_STATE_HOME` at a temp tree and clears `AOC_SESSION` — end-to-end tests must
   stay hermetic. Anything needing `cargo`/`dotnet`/`javac` belongs in a unit test with `FakeRunner`.
+* CI runs the suite on Windows too, so a test may not spell a path by hand: `/aoc/2024` is
+  drive-relative there (and so refused by `Config`'s absoluteness check), and a joined path carries
+  backslashes. Root a test path on a drive under `cfg!(windows)`, and build an expected path with
+  the same `Path::join`/`build::executable` the code under test uses.
 * Doc examples in `lib.rs`, `template.rs` and `answer.rs` are compiled and run by `cargo test`;
   update them when the API they show changes.
 * Commit messages are Conventional Commits — release-plz parses them (`release-plz.toml`) to build

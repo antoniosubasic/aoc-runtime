@@ -405,13 +405,35 @@ mod tests {
 
     const ARTIFACTS: &str = "/state/builds/2024-07/c";
 
-    /// A built binary's path, spelled the way the platform spells it.
-    fn built(directory: &str, stem: &str) -> String {
-        format!("{directory}/{stem}{}", std::env::consts::EXE_SUFFIX)
+    /// A path spelled the way the code under test spells it: it joins the
+    /// components it adds, so the separator between them is the platform's.
+    fn joined(base: impl AsRef<Path>, components: &str) -> String {
+        components
+            .split('/')
+            .fold(base.as_ref().to_path_buf(), |path, component| {
+                path.join(component)
+            })
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// A built binary's path, spelled the way the platform spells both a
+    /// separator and an executable.
+    fn built(directory: impl AsRef<Path>, stem: &str) -> String {
+        directory
+            .as_ref()
+            .join(build::executable(stem))
+            .to_string_lossy()
+            .into_owned()
     }
 
     fn project() -> PathBuf {
         PathBuf::from("/aoc/2024/day07/rust")
+    }
+
+    /// Where a language's build output lands, keyed like `BuildStore` keys it.
+    fn artifacts(language: Language) -> PathBuf {
+        PathBuf::from("/state/builds/2024-07").join(language.name())
     }
 
     fn layout<'a>(project: &'a Path, artifacts: &'a Path) -> Layout<'a> {
@@ -419,9 +441,8 @@ mod tests {
     }
 
     fn commands_for(language: Language, project: &Path) -> LanguageCommands {
-        let artifacts = PathBuf::from("/state/builds/2024-07").join(language.name());
         language
-            .commands(layout(project, &artifacts))
+            .commands(layout(project, &artifacts(language)))
             .expect("commands should build")
     }
 
@@ -509,7 +530,7 @@ mod tests {
     fn a_manually_compiled_language_writes_nothing_into_the_project() {
         for language in Language::ALL {
             let project = project().with_file_name(language.name());
-            let artifacts = PathBuf::from("/state/builds/2024-07").join(language.name());
+            let artifacts = artifacts(*language);
             let commands = commands_for(*language, &project);
 
             // Cargo and the .NET SDK build inside the project on purpose; the
@@ -548,7 +569,7 @@ mod tests {
 
         assert_eq!(
             commands.run.program(),
-            OsStr::new(&built("/aoc/2024/day07/rust/target/release", "rust"))
+            OsStr::new(&built(joined(project(), "target/release"), "rust"))
         );
         assert!(args_of(&commands.run).is_empty());
     }
@@ -568,7 +589,7 @@ mod tests {
                 "build",
                 "--release",
                 "--manifest-path",
-                "/aoc/2024/day07/rust/Cargo.toml"
+                &joined(project(), "Cargo.toml")
             ]
         );
     }
@@ -588,7 +609,7 @@ mod tests {
                 "--release",
                 "--quiet",
                 "--manifest-path",
-                "/aoc/2024/day07/rust/Cargo.toml"
+                &joined(project(), "Cargo.toml")
             ]
         );
     }
@@ -620,9 +641,11 @@ mod tests {
         let commands = commands_for(Language::CSharp, &project);
         let build = commands.build.expect("csharp is compiled");
 
+        let output = joined(&project, "bin/Release");
+
         assert_eq!(
             commands.run.program(),
-            OsStr::new(&built("/aoc/2024/day07/csharp/bin/Release", "csharp"))
+            OsStr::new(&built(&output, "csharp"))
         );
         assert_eq!(
             args_of(&build),
@@ -634,8 +657,8 @@ mod tests {
                 "-v",
                 "q",
                 "-o",
-                "/aoc/2024/day07/csharp/bin/Release",
-                "/aoc/2024/day07/csharp"
+                &output,
+                &*project.to_string_lossy()
             ]
         );
     }
@@ -702,10 +725,7 @@ mod tests {
 
         assert!(commands.build.is_none());
         assert_eq!(commands.run.program(), OsStr::new("node"));
-        assert_eq!(
-            args_of(&commands.run),
-            ["/aoc/2024/day07/javascript/main.js"]
-        );
+        assert_eq!(args_of(&commands.run), [joined(&project, "main.js")]);
         assert_eq!(
             commands.run_fallback.as_ref().map(CommandSpec::program),
             Some(OsStr::new("nodejs"))
@@ -717,19 +737,14 @@ mod tests {
         let project = PathBuf::from("/aoc/2024/day07/java");
         let commands = commands_for(Language::Java, &project);
 
+        let classes = artifacts(Language::Java).to_string_lossy().into_owned();
+
         assert_eq!(
             args_of(&commands.build.expect("java is compiled")),
-            [
-                "-d",
-                "/state/builds/2024-07/java",
-                "/aoc/2024/day07/java/Main.java"
-            ]
+            ["-d", &classes, &joined(&project, "Main.java")]
         );
         assert_eq!(commands.run.program(), OsStr::new("java"));
-        assert_eq!(
-            args_of(&commands.run),
-            ["-cp", "/state/builds/2024-07/java", "Main"]
-        );
+        assert_eq!(args_of(&commands.run), ["-cp", &classes, "Main"]);
     }
 
     #[test]
@@ -768,7 +783,7 @@ mod tests {
         let project = PathBuf::from("/aoc/2024/day07/go");
         let commands = commands_for(Language::Go, &project);
 
-        let binary = built("/state/builds/2024-07/go", "bin");
+        let binary = built(artifacts(Language::Go), "bin");
 
         assert_eq!(
             args_of(&commands.build.expect("go is compiled")),
@@ -788,7 +803,7 @@ mod tests {
             let project = project().with_file_name(language.name());
             let commands = commands_for(language, &project);
             let build = commands.build.expect("compiled");
-            let binary = built(&format!("/state/builds/2024-07/{}", language.name()), "bin");
+            let binary = built(artifacts(language), "bin");
 
             assert_eq!(build.program(), OsStr::new(compiler));
             assert_eq!(

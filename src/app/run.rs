@@ -116,6 +116,7 @@ mod tests {
             fake::FakeClient,
         },
         app::{INPUT_FILE_NAME, testing::Harness},
+        build,
         puzzle::{Day, Part, Year},
         report::Event,
     };
@@ -165,7 +166,10 @@ mod tests {
             .run(puzzle(), Language::Rust, &project, false)
             .expect("run should succeed");
 
-        let binary = project.join("target").join("release").join("rust");
+        let binary = project
+            .join("target")
+            .join("release")
+            .join(build::executable("rust"));
         assert_eq!(
             programs(&harness),
             ["cargo".to_owned(), binary.to_string_lossy().into_owned()]
