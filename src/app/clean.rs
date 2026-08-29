@@ -3,7 +3,8 @@
 //! Build output is regenerable, so removing it costs nothing and is never
 //! questioned. Inputs and answers are not: an input costs another request to
 //! the site and an answer costs a submission, so removing those is confirmed
-//! first and only ever because the user asked for it.
+//! first and only ever because the user asked for it - unless there are none,
+//! which is nothing to confirm.
 //!
 //! The last-request stamp is deliberately not among the things removed. It
 //! sits at the root of the state directory rather than inside any of the three
@@ -20,22 +21,28 @@ impl App<'_> {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ConfirmationRequired`] if `all` is set and there is
-    /// nobody to ask, or [`Error::Io`] if something cannot be removed.
+    /// Returns [`Error::ConfirmationRequired`] if `all` is set, something is
+    /// stored and there is nobody to ask, or [`Error::Io`] if something cannot
+    /// be removed.
     pub(super) fn clean(&mut self, all: bool) -> Result<(), Error> {
         if !all {
             return self.builds.clear();
         }
 
         let count = self.inputs.count();
-        let question = format!(
-            "remove all build output, {count} downloaded {} and every cached answer? \
-             the inputs will be downloaded again on the next run",
-            if count == 1 { "input" } else { "inputs" },
-        );
+        // Nothing is at stake when nothing was ever downloaded or accepted, and
+        // asking anyway would fail an unattended `clean --all` that has no work
+        // to do.
+        if count > 0 || !self.cache.is_empty() {
+            let question = format!(
+                "remove all build output, {count} downloaded {} and every cached answer? \
+                 the inputs will be downloaded again on the next run",
+                if count == 1 { "input" } else { "inputs" },
+            );
 
-        if !self.confirm.confirm(&question)? {
-            return Ok(());
+            if !self.confirm.confirm(&question)? {
+                return Ok(());
+            }
         }
 
         self.builds.clear()?;
@@ -190,5 +197,23 @@ mod tests {
             .app()
             .execute(Plan::Clean { all: true })
             .expect("nothing to remove is not a failure");
+    }
+
+    #[test]
+    fn an_unattended_clean_all_with_nothing_to_remove_is_not_refused() {
+        // A scripted `clean --all` would otherwise succeed once and then fail
+        // on every run after it.
+        let root = tempfile::tempdir().expect("temp dir");
+        let mut harness = Harness::new(root.path());
+
+        harness
+            .app()
+            .execute(Plan::Clean { all: true })
+            .expect("there is nothing to ask about");
+
+        assert!(
+            harness.confirm.questions.is_empty(),
+            "asked about nothing at all"
+        );
     }
 }

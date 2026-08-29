@@ -426,6 +426,20 @@ fn clean_removes_build_output_and_needs_no_language() {
 }
 
 #[test]
+fn clean_all_asks_nothing_when_the_state_directory_is_empty() {
+    // Nothing is at stake, so a scripted `clean --all` keeps working after the
+    // first run emptied everything.
+    let fixture = Fixture::new();
+
+    fixture
+        .command()
+        .args(["clean", "--all"])
+        .assert()
+        .success()
+        .stdout("");
+}
+
+#[test]
 fn clean_all_is_refused_when_there_is_nobody_to_confirm_with() {
     let fixture = Fixture::new();
     let [build, input, answer, stamp] = seed_state(&fixture);

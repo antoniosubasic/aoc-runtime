@@ -19,6 +19,12 @@ pub trait AnswerCache {
     /// Records an accepted answer. Failures are silently ignored.
     fn record(&self, puzzle: Puzzle, part: Part, answer: &str);
 
+    /// Whether nothing is remembered at all.
+    ///
+    /// Best effort, like the rest of the cache's reads: a cache that cannot be
+    /// listed counts as holding nothing.
+    fn is_empty(&self) -> bool;
+
     /// Forgets every accepted answer.
     ///
     /// Unlike [`AnswerCache::record`] this is fallible: it happens only
@@ -71,6 +77,13 @@ impl AnswerCache for FileCache {
         }
     }
 
+    fn is_empty(&self) -> bool {
+        match fs::read_dir(&self.root) {
+            Ok(mut entries) => entries.next().is_none(),
+            Err(_) => true,
+        }
+    }
+
     fn clear(&self) -> Result<(), Error> {
         match fs::remove_dir_all(&self.root) {
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
@@ -111,6 +124,10 @@ pub(crate) mod memory {
             self.entries
                 .borrow_mut()
                 .insert((puzzle, part), answer.to_owned());
+        }
+
+        fn is_empty(&self) -> bool {
+            self.entries.borrow().is_empty()
         }
 
         fn clear(&self) -> Result<(), Error> {
