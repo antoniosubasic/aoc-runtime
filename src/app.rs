@@ -91,6 +91,7 @@ impl App<'_> {
                 self.reporter.data(&puzzle.url());
                 Ok(())
             }
+            Plan::Open { puzzle } => open_in_browser(&puzzle.url()),
         }
     }
 
@@ -150,6 +151,17 @@ impl App<'_> {
                 .warn(&format!("could not link puzzle input: {error}"));
         }
     }
+}
+
+/// Hands a URL to whatever the system has registered for links.
+///
+/// This is the user's own browser visiting the site, not a request the tool
+/// makes, so it needs no throttling and reports nothing on success.
+fn open_in_browser(url: &str) -> Result<(), Error> {
+    open::that(url).map_err(|source| Error::Browser {
+        url: url.to_owned(),
+        source,
+    })
 }
 
 #[cfg(test)]

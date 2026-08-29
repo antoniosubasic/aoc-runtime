@@ -122,6 +122,9 @@ and the README documents these guarantees to users. Treat them as invariants:
 * Accepted answers are cached (`aoc/cache.rs`) so a solved part is verified locally instead of
   re-submitted.
 * With no session cookie there is no client at all — a run provably cannot make a request.
+* `aoc open` hands the puzzle URL to the OS link handler (`open::that`) and makes no request of
+  its own, so it needs no throttle and does not widen the rule above. Keep it that way: it is the
+  user's browser visiting the site, not the tool.
 * The cookie is never printed. `Config` and `App` both have hand-written `Debug` impls that report
   `has_cookie`/`has_client` instead of the value; do not derive `Debug` on anything that can hold
   the cookie.

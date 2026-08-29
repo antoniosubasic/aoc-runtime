@@ -107,6 +107,7 @@ aoc [OPTIONS] [MODE]...
 | `path` | Print the project directory |
 | `code` | Open the project directory in your editor |
 | `url` | Print the puzzle URL |
+| `open` | Open the puzzle in your default browser |
 
 | Option | Description |
 | --- | --- |
@@ -117,13 +118,14 @@ aoc [OPTIONS] [MODE]...
 | `--config <FILE>` | Use a specific config file. |
 | `-h, --help` / `-V, --version` | |
 
-Every mode except `url` needs a language.
+Neither `url` nor `open` needs a language.
 
 Several modes run one after another, in the order given:
 
 ```console
 $ aoc init code          # scaffold the project, then open it in your editor
 $ aoc init run           # scaffold it, then build, run and submit
+$ aoc open init code     # read the puzzle, scaffold it, open your editor
 ```
 
 They share the same year, day and language, and nothing is carried from one to

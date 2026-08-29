@@ -55,6 +55,11 @@ pub enum Plan {
         /// The puzzle to link to.
         puzzle: Puzzle,
     },
+    /// Open a puzzle URL in the default browser.
+    Open {
+        /// The puzzle to open.
+        puzzle: Puzzle,
+    },
 }
 
 /// Resolves arguments, the working directory and the clock into one [`Plan`]
@@ -105,29 +110,38 @@ pub fn plan(
     cli.modes
         .iter()
         .map(|&mode| {
-            if !mode.needs_language() {
-                return Ok(Plan::Url { puzzle });
-            }
-
-            let (language, project) = language
-                .zip(project.clone())
-                .ok_or(ResolveError::LanguageRequired { mode })?;
+            let with_project = || {
+                language
+                    .zip(project.clone())
+                    .ok_or(ResolveError::LanguageRequired { mode })
+            };
 
             Ok(match mode {
-                Mode::Run => Plan::Run {
-                    puzzle,
-                    language,
-                    project,
-                    submit: !cli.no_submit,
-                },
-                Mode::Init => Plan::Init {
-                    puzzle,
-                    language,
-                    project,
-                },
-                Mode::Path => Plan::Path { project },
-                Mode::Code => Plan::Code { project },
                 Mode::Url => Plan::Url { puzzle },
+                Mode::Open => Plan::Open { puzzle },
+                Mode::Run => {
+                    let (language, project) = with_project()?;
+                    Plan::Run {
+                        puzzle,
+                        language,
+                        project,
+                        submit: !cli.no_submit,
+                    }
+                }
+                Mode::Init => {
+                    let (language, project) = with_project()?;
+                    Plan::Init {
+                        puzzle,
+                        language,
+                        project,
+                    }
+                }
+                Mode::Path => Plan::Path {
+                    project: with_project()?.1,
+                },
+                Mode::Code => Plan::Code {
+                    project: with_project()?.1,
+                },
             })
         })
         .collect()
@@ -240,9 +254,10 @@ mod tests {
 
     fn puzzle_of(plan: &Plan) -> Option<Puzzle> {
         match plan {
-            Plan::Run { puzzle, .. } | Plan::Init { puzzle, .. } | Plan::Url { puzzle } => {
-                Some(*puzzle)
-            }
+            Plan::Run { puzzle, .. }
+            | Plan::Init { puzzle, .. }
+            | Plan::Url { puzzle }
+            | Plan::Open { puzzle } => Some(*puzzle),
             Plan::Path { .. } | Plan::Code { .. } => None,
         }
     }
@@ -253,7 +268,7 @@ mod tests {
             | Plan::Init { project, .. }
             | Plan::Path { project }
             | Plan::Code { project } => Some(project),
-            Plan::Url { .. } => None,
+            Plan::Url { .. } | Plan::Open { .. } => None,
         }
     }
 
@@ -393,6 +408,23 @@ mod tests {
     }
 
     #[test]
+    fn open_needs_no_language() {
+        let plan =
+            resolve_one(&["open"], "/elsewhere", date(2024, 12, 5)).expect("plan should resolve");
+
+        assert_eq!(
+            plan,
+            Plan::Open {
+                puzzle: puzzle_of(&plan).expect("open carries a puzzle")
+            }
+        );
+        assert_eq!(
+            puzzle_of(&plan).map(Puzzle::url).as_deref(),
+            Some("https://adventofcode.com/2024/day/5")
+        );
+    }
+
+    #[test]
     fn other_modes_require_a_language() {
         for mode in ["run", "init", "path", "code"] {
             let error = resolve_one(&[mode], "/elsewhere", date(2024, 12, 5))
@@ -428,7 +460,7 @@ mod tests {
     #[test]
     fn every_mode_gets_a_plan_in_the_order_given() {
         let plans = resolve_all(
-            &["init", "code", "url"],
+            &["init", "code", "url", "open"],
             "/root/2024/day07/rust",
             date(2024, 12, 7),
         )
@@ -437,7 +469,12 @@ mod tests {
         assert!(
             matches!(
                 plans.as_slice(),
-                [Plan::Init { .. }, Plan::Code { .. }, Plan::Url { .. }]
+                [
+                    Plan::Init { .. },
+                    Plan::Code { .. },
+                    Plan::Url { .. },
+                    Plan::Open { .. }
+                ]
             ),
             "{plans:?}"
         );
@@ -478,6 +515,10 @@ mod tests {
         assert!(matches!(
             resolve_one(&["url"], cwd, today),
             Ok(Plan::Url { .. })
+        ));
+        assert!(matches!(
+            resolve_one(&["open"], cwd, today),
+            Ok(Plan::Open { .. })
         ));
     }
 }

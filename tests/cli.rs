@@ -35,6 +35,7 @@ fn help_works_without_a_config_file() {
         .stdout(predicate::str::contains("- path:"))
         .stdout(predicate::str::contains("- code:"))
         .stdout(predicate::str::contains("- url:"))
+        .stdout(predicate::str::contains("- open:"))
         .stdout(predicate::str::contains("Puzzle year"))
         .stdout(predicate::str::contains("Solution language"));
 }

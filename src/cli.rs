@@ -61,13 +61,15 @@ pub enum Mode {
     Code,
     /// Print the puzzle URL.
     Url,
+    /// Open the puzzle in your default browser.
+    Open,
 }
 
 impl Mode {
     /// Whether this mode needs a language to identify a project.
     #[must_use]
     pub const fn needs_language(self) -> bool {
-        !matches!(self, Self::Url)
+        !matches!(self, Self::Url | Self::Open)
     }
 
     /// The mode's lowercase name, as accepted on the command line.
@@ -79,6 +81,7 @@ impl Mode {
             Self::Path => "path",
             Self::Code => "code",
             Self::Url => "url",
+            Self::Open => "open",
         }
     }
 }
@@ -126,7 +129,14 @@ mod tests {
 
     #[test]
     fn accepts_every_mode_positionally() {
-        for mode in [Mode::Run, Mode::Init, Mode::Path, Mode::Code, Mode::Url] {
+        for mode in [
+            Mode::Run,
+            Mode::Init,
+            Mode::Path,
+            Mode::Code,
+            Mode::Url,
+            Mode::Open,
+        ] {
             let cli = Cli::try_parse_from(["aoc", mode.name()]).expect("mode should parse");
             assert_eq!(cli.modes, [mode]);
         }
@@ -209,8 +219,9 @@ mod tests {
     }
 
     #[test]
-    fn only_url_works_without_a_language() {
+    fn url_and_open_work_without_a_language() {
         assert!(!Mode::Url.needs_language());
+        assert!(!Mode::Open.needs_language());
         for mode in [Mode::Run, Mode::Init, Mode::Path, Mode::Code] {
             assert!(mode.needs_language(), "{mode}");
         }

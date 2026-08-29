@@ -45,6 +45,16 @@ pub enum Error {
         path: PathBuf,
     },
 
+    /// The puzzle URL could not be handed to a browser.
+    #[error("failed to open {url} in a browser")]
+    Browser {
+        /// The URL that could not be opened.
+        url: String,
+        /// The underlying I/O error.
+        #[source]
+        source: io::Error,
+    },
+
     /// A filesystem operation failed.
     #[error("failed to {action}: {path}")]
     Io {
