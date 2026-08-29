@@ -866,7 +866,9 @@ mod tests {
             Language::C.build_directory(layout(&project, artifacts)),
             Some(artifacts)
         );
-        assert!(args_of(&commands.build.expect("c is compiled")).contains(&built(ARTIFACTS, "bin")));
+        assert!(
+            args_of(&commands.build.expect("c is compiled")).contains(&built(ARTIFACTS, "bin"))
+        );
     }
 
     #[test]

@@ -73,21 +73,37 @@ pub enum Plan {
 ///
 /// Precedence for each value is: explicit argument, then whatever the working
 /// directory reveals through the configured template, then a date-based
-/// default. The puzzle and the project directory are shared by every mode; no
-/// mode observes what the ones before it did.
+/// default. The puzzle and the project directory are shared by every mode that
+/// names one; no mode observes what the ones before it did. `clean` names
+/// neither: it works on the state directory alone, so it is planned without a
+/// puzzle, a language or a project, and the flags that belong to it are
+/// refused anywhere else.
 ///
 /// # Errors
 ///
-/// Returns [`ResolveError::LanguageRequired`] if a mode needs a language and
-/// none could be determined, or [`ResolveError::Template`] if the template's
-/// matcher cannot be compiled. Either way nothing is returned, so a failing
-/// mode is caught before any of them executes.
+/// Returns [`ResolveError::CleanOnlyFlag`] if `--all` or `--yes` was given
+/// without `clean`, [`ResolveError::LanguageRequired`] if a mode needs a
+/// language and none could be determined, [`ResolveError::DayOutOfRange`] if a
+/// mode names a puzzle the event never had, or [`ResolveError::Template`] if
+/// the template's matcher cannot be compiled. Either way nothing is returned,
+/// so a failing mode is caught before any of them executes.
 pub fn plan(
     cli: &Cli,
     config: &Config,
     cwd: &Path,
     clock: &dyn Clock,
 ) -> Result<Vec<Plan>, ResolveError> {
+    // `--all` and `--yes` are `clean`'s alone. Anywhere else they would quietly
+    // do nothing, and `aoc run --all` reads like a promise to run every day.
+    if !cli.modes.contains(&Mode::Clean) {
+        if cli.all {
+            return Err(ResolveError::CleanOnlyFlag { flag: "all" });
+        }
+        if cli.yes {
+            return Err(ResolveError::CleanOnlyFlag { flag: "yes" });
+        }
+    }
+
     let today = clock.today();
     let detected = config.template.matcher()?.detect(cwd);
 
@@ -103,55 +119,66 @@ pub fn plan(
         .or_else(|| detected.day.filter(|&day| year.has_day(day)))
         .unwrap_or_else(|| default_day(year, today));
 
-    let puzzle = Puzzle::new(year, day).ok_or(ResolveError::DayOutOfRange { year, day })?;
     let language = cli.language.or(detected.language);
-    let project = language.map(|language| {
-        config.template.render(Params {
-            year,
-            day,
-            language,
-        })
-    });
+    // Only the modes that name a puzzle care whether this pairing exists, so
+    // the pairing is checked where it is used rather than for every mode.
+    let puzzle = || Puzzle::new(year, day).ok_or(ResolveError::DayOutOfRange { year, day });
 
     cli.modes
         .iter()
         .map(|&mode| {
-            let with_project = || {
-                language
-                    .zip(project.clone())
-                    .ok_or(ResolveError::LanguageRequired { mode })
+            let with_project = || -> Result<Project, ResolveError> {
+                let language = language.ok_or(ResolveError::LanguageRequired { mode })?;
+
+                Ok(Project {
+                    puzzle: puzzle()?,
+                    language,
+                    path: config.template.render(Params {
+                        year,
+                        day,
+                        language,
+                    }),
+                })
             };
 
             Ok(match mode {
-                Mode::Url => Plan::Url { puzzle },
-                Mode::Open => Plan::Open { puzzle },
                 Mode::Clean => Plan::Clean { all: cli.all },
+                Mode::Url => Plan::Url { puzzle: puzzle()? },
+                Mode::Open => Plan::Open { puzzle: puzzle()? },
                 Mode::Run => {
-                    let (language, project) = with_project()?;
+                    let project = with_project()?;
                     Plan::Run {
-                        puzzle,
-                        language,
-                        project,
+                        puzzle: project.puzzle,
+                        language: project.language,
+                        project: project.path,
                         submit: !cli.no_submit,
                     }
                 }
                 Mode::Init => {
-                    let (language, project) = with_project()?;
+                    let project = with_project()?;
                     Plan::Init {
-                        puzzle,
-                        language,
-                        project,
+                        puzzle: project.puzzle,
+                        language: project.language,
+                        project: project.path,
                     }
                 }
                 Mode::Path => Plan::Path {
-                    project: with_project()?.1,
+                    project: with_project()?.path,
                 },
                 Mode::Code => Plan::Code {
-                    project: with_project()?.1,
+                    project: with_project()?.path,
                 },
             })
         })
         .collect()
+}
+
+/// A project directory together with the puzzle and language it was rendered
+/// from, which the modes that work on a project need in various combinations.
+struct Project {
+    puzzle: Puzzle,
+    language: Language,
+    path: PathBuf,
 }
 
 /// The most recent event that has started on the given date.
@@ -194,6 +221,12 @@ pub enum ResolveError {
     LanguageRequired {
         /// The mode that needs a language.
         mode: Mode,
+    },
+    /// A flag only `clean` understands was given without it.
+    #[error("`--{flag}` applies to `clean` only, which is not among the modes given")]
+    CleanOnlyFlag {
+        /// The flag's long name, without its dashes.
+        flag: &'static str,
     },
     /// The requested day is past the end of the requested event.
     #[error("{year} has no day {day} - that event ends on day {}", .year.last_day())]
@@ -445,6 +478,67 @@ mod tests {
             .expect("plan should resolve");
 
         assert_eq!(plan, Plan::Clean { all: true });
+    }
+
+    #[test]
+    fn clean_is_planned_without_a_puzzle_at_all() {
+        // 2025 ends on day 12, which `clean` has no opinion about: it empties
+        // the state directory and names no puzzle.
+        let plan = resolve_one(
+            &["clean", "--all", "-y", "2025", "-d", "20"],
+            "/elsewhere",
+            date(2025, 12, 20),
+        )
+        .expect("clean needs no puzzle");
+
+        assert_eq!(plan, Plan::Clean { all: true });
+    }
+
+    #[test]
+    fn a_project_mode_still_refuses_a_day_the_event_never_had() {
+        let error = resolve_one(
+            &["-l", "rust", "-y", "2025", "-d", "20", "path"],
+            "/elsewhere",
+            date(2025, 12, 20),
+        )
+        .expect_err("2025 ends on day 12");
+
+        assert!(
+            matches!(error, ResolveError::DayOutOfRange { .. }),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn cleans_own_flags_are_refused_on_every_other_mode() {
+        for mode in ["run", "init", "path", "code", "url", "open"] {
+            for (argument, name) in [("--all", "all"), ("--yes", "yes")] {
+                let error = resolve_one(
+                    &["-l", "rust", argument, mode],
+                    "/elsewhere",
+                    date(2024, 12, 5),
+                )
+                .expect_err("the flag belongs to clean");
+
+                assert!(
+                    matches!(&error, ResolveError::CleanOnlyFlag { flag } if *flag == name),
+                    "{mode} {argument}: {error:?}"
+                );
+                assert!(error.to_string().contains("clean"), "{error}");
+            }
+        }
+    }
+
+    #[test]
+    fn cleans_own_flags_are_accepted_when_it_is_among_the_modes() {
+        let plans = resolve_all(
+            &["-l", "rust", "path", "clean", "--all", "--yes"],
+            "/elsewhere",
+            date(2024, 12, 5),
+        )
+        .expect("clean is among the modes");
+
+        assert_eq!(plans.last(), Some(&Plan::Clean { all: true }));
     }
 
     #[test]

@@ -426,6 +426,18 @@ fn clean_removes_build_output_and_needs_no_language() {
 }
 
 #[test]
+fn cleans_own_flags_are_refused_on_another_mode() {
+    let fixture = Fixture::new();
+
+    fixture
+        .command()
+        .args(["run", "--all"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("`--all` applies to `clean` only"));
+}
+
+#[test]
 fn clean_all_asks_nothing_when_the_state_directory_is_empty() {
     // Nothing is at stake, so a scripted `clean --all` keeps working after the
     // first run emptied everything.
