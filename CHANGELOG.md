@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 From the next release onwards this file is maintained automatically by
 [release-plz](https://release-plz.dev) from the commit history.
 
+## [0.9.1](https://github.com/antoniosubasic/aoc-runtime/compare/v0.9.0...v0.9.1) - 2026-09-16
+
+### Dependencies
+
+- *(deps)* bump open from 5.4.2 to 5.4.3 in the cargo group
+- *(deps)* bump rustls from 0.23.43 to 0.23.45
+- *(deps)* bump open in the cargo group across 1 directory
+
 ## [0.9.0](https://github.com/antoniosubasic/aoc-runtime/compare/v0.8.0...v0.9.0) - 2026-08-29
 
 ### Added
