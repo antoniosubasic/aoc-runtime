@@ -92,9 +92,9 @@ dependencies = [
 
 [[package]]
 name = "aoc_api"
-version = "5.0.0"
+version = "5.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "119c96a5b1eb282e264f3ba57edb66526937717aca0e122413a1480e61540074"
+checksum = "c84abf78ae4100dbd9d61670ce06ff9ffbd09dabd0c74f7947fa2a9b0244ece3"
 dependencies = [
  "reqwest",
  "thiserror",
