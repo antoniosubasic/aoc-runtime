@@ -571,7 +571,7 @@ mod tests {
             commands.run.program(),
             OsStr::new(&built(joined(project(), "target/release"), "rust"))
         );
-        assert!(args_of(&commands.run).is_empty());
+        assert_eq!(args_of(&commands.run), Vec::<String>::new());
     }
 
     #[test]

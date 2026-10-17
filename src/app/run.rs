@@ -298,7 +298,7 @@ mod tests {
             .expect_err("project does not exist");
 
         assert!(matches!(error, Error::ProjectMissing { .. }), "{error:?}");
-        assert!(harness.runner.executed().is_empty());
+        assert_eq!(harness.runner.executed(), []);
     }
 
     #[test]
@@ -313,14 +313,7 @@ mod tests {
             .expect("run should succeed");
 
         assert_eq!(harness.reporter.raw_output(), "a\nb\nc\n");
-        assert!(
-            harness
-                .client
-                .as_ref()
-                .expect("client")
-                .submitted()
-                .is_empty()
-        );
+        assert_eq!(harness.client.as_ref().expect("client").submitted(), []);
     }
 
     #[test]
@@ -390,14 +383,7 @@ mod tests {
             .run(puzzle(), Language::Rust, &project, false)
             .expect("run should succeed");
 
-        assert!(
-            harness
-                .client
-                .as_ref()
-                .expect("client")
-                .submitted()
-                .is_empty()
-        );
+        assert_eq!(harness.client.as_ref().expect("client").submitted(), []);
     }
 
     #[test]

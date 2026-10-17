@@ -337,7 +337,7 @@ mod tests {
         let (config, warnings) = load(&document("/aoc/{{year}}/day{{pad day}}/{{language}}", ""))
             .expect("config should load");
 
-        assert!(warnings.is_empty());
+        assert_eq!(warnings, Vec::<String>::new());
         assert_eq!(config.cookie, None);
         assert_eq!(config.editor, DEFAULT_EDITOR);
         assert_eq!(project_path(&config), rooted("/aoc/2024/day07/rust"));
