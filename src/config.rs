@@ -15,7 +15,7 @@
 //! dotfiles.
 
 use crate::{env::Env, template::Template};
-use serde::Deserialize;
+use serde::{Deserialize, de::IgnoredAny};
 use std::{
     collections::BTreeMap,
     fs, io,
@@ -66,8 +66,10 @@ struct RawConfig {
     cookie: Option<String>,
     #[serde(default)]
     editor: Option<String>,
+    // Only the keys are wanted, to warn about them; `IgnoredAny` skips each value.
+    #[allow(clippy::zero_sized_map_values)]
     #[serde(flatten)]
-    unknown: BTreeMap<String, serde_yaml_ng::Value>,
+    unknown: BTreeMap<String, IgnoredAny>,
 }
 
 impl Config {
@@ -108,9 +110,9 @@ impl Config {
     /// `template_path` is relative or not a valid template.
     pub fn from_yaml(contents: &str, env: &Env) -> Result<(Self, Vec<Warning>), ConfigError> {
         let raw: RawConfig =
-            serde_yaml_ng::from_str(contents).map_err(|source| ConfigError::Parse {
+            serde_saphyr::from_str(contents).map_err(|source| ConfigError::Parse {
                 path: env.config_file.clone(),
-                source,
+                source: Box::new(source),
             })?;
 
         let mut warnings = Vec::new();
@@ -230,9 +232,10 @@ pub enum ConfigError {
     Parse {
         /// The offending file.
         path: PathBuf,
-        /// The underlying deserialisation error.
+        /// The underlying deserialisation error, boxed because it is large
+        /// enough to bloat every `Result` carrying a [`ConfigError`].
         #[source]
-        source: serde_yaml_ng::Error,
+        source: Box<serde_saphyr::Error>,
     },
     /// The `template_path` does not start at the root of the filesystem.
     #[error(
@@ -337,7 +340,7 @@ mod tests {
         let (config, warnings) = load(&document("/aoc/{{year}}/day{{pad day}}/{{language}}", ""))
             .expect("config should load");
 
-        assert!(warnings.is_empty());
+        assert_eq!(warnings, Vec::<String>::new());
         assert_eq!(config.cookie, None);
         assert_eq!(config.editor, DEFAULT_EDITOR);
         assert_eq!(project_path(&config), rooted("/aoc/2024/day07/rust"));

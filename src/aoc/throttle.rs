@@ -217,7 +217,7 @@ mod tests {
 
         throttle.acquire();
 
-        assert!(throttle.timer.waits().is_empty());
+        assert_eq!(throttle.timer.waits(), []);
     }
 
     #[test]
@@ -241,7 +241,7 @@ mod tests {
         throttle.timer.advance(INTERVAL);
         throttle.acquire();
 
-        assert!(throttle.timer.waits().is_empty());
+        assert_eq!(throttle.timer.waits(), []);
     }
 
     #[test]
@@ -286,6 +286,6 @@ mod tests {
         let throttle = throttle(dir.path(), 1000);
         throttle.acquire();
 
-        assert!(throttle.timer.waits().is_empty());
+        assert_eq!(throttle.timer.waits(), []);
     }
 }
